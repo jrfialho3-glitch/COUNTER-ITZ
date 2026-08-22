@@ -1,306 +1,354 @@
 // js/ui-home.js
-// Render da home: 7 cards de dia, modal de criar lista, entrar/sair, cores.
+// Render da home: 10 cards de mix, 5 em cima e 5 embaixo.
+// Cada card tem 10 slots + 5 complete. Usuário escolhe online/presencial.
 
-import {
-  onAllListsChange,
-  createList,
-  joinList,
-  leaveList,
-  deleteList,
-} from "./db.js";
-import {
-  dayInfoForOffset,
-  todayKey,
-  getStatus,
-  countPlayers,
-  countWaitlist,
-  isCreator,
-  isInList,
-  isInWaitlist,
-  sanitizeNick,
-} from "./utils.js";
-import { getNick } from "./identity.js";
+import { getNick, setNick } from "./identity.js";
+import { getNext10Days, getStatus, sanitizeNick, escapeHtml } from "./utils.js";
 
-// ---- Estado em memória: todas as listas por dateKey ----
-let allLists = {}; // { dateKey: { listId: list } }
+// Referências DOM
+const grid = document.getElementById("mixes-grid");
+const modalNick = document.getElementById("modal-nick");
+const formNick = document.getElementById("form-nick");
+const inputNick = document.getElementById("input-nick");
+const nickDisplay = document.getElementById("current-nick");
+const changeNickBtn = document.getElementById("change-nick");
+const modalType = document.getElementById("modal-type");
+const formType = document.getElementById("form-type");
+const modalTypeDay = document.getElementById("modal-type-day");
+const toastArea = document.getElementById("toast-area");
 
-// ---- Dias visíveis na home: hoje + 6 próximos ----
-function visibleDays() {
-  const out = [];
-  for (let i = 0; i < 7; i++) {
-    out.push(dayInfoForOffset(i));
+// Estado local: { dateKey: { type: "online"|"presencial"|"none", slots: {1..10: nick|null}, complete: {1..5: nick|null} } }
+let mixState = {};
+
+// Carrega do localStorage
+function loadState() {
+  try {
+    const saved = localStorage.getItem("counteritz_mixes");
+    if (saved) mixState = JSON.parse(saved);
+  } catch {
+    mixState = {};
   }
-  return out;
 }
 
-// ---- Helpers de cor do card do dia ----
-function dayAccentClass(listsOfDay) {
-  if (!listsOfDay) return "";
-  const arr = Object.values(listsOfDay);
-  if (!arr.length) return "";
-  const hasRed = arr.some((l) => countPlayers(l) >= 10);
-  if (hasRed) return "has-list-red";
-  const hasYellow = arr.some((l) => countPlayers(l) >= 5);
-  if (hasYellow) return "has-list-yellow";
-  return "has-list-green";
+// Salva no localStorage
+function saveState() {
+  try {
+    localStorage.setItem("counteritz_mixes", JSON.stringify(mixState));
+  } catch {}
 }
 
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+// Inicializa um dia se não existir
+function ensureDay(dateKey) {
+  if (!mixState[dateKey]) {
+    mixState[dateKey] = {
+      type: "none",
+      slots: {},
+      complete: {}
+    };
+  }
 }
 
-// ---- Render do card do dia ----
-function renderDayCard(day) {
-  const isToday = day.key === todayKey();
-  const listsOfDay = allLists[day.key] || {};
-  const accent = dayAccentClass(listsOfDay);
-  const dayClass = `day-card ${isToday ? "today" : ""} ${accent}`.trim();
+// Conta slots preenchidos (sem complete)
+function countSlots(dateKey) {
+  const day = mixState[dateKey];
+  if (!day) return 0;
+  return Object.keys(day.slots || {}).filter(k => day.slots[k]).length;
+}
+
+// Conta complete preenchidos
+function countComplete(dateKey) {
+  const day = mixState[dateKey];
+  if (!day) return 0;
+  return Object.keys(day.complete || {}).filter(k => day.complete[k]).length;
+}
+
+// Renderiza um card de mix
+function renderMixCard(day) {
+  ensureDay(day.key);
+  const data = mixState[day.key];
+  const count = countSlots(day.key);
+  const status = getStatus(count);
+  const completeCount = countComplete(day.key);
+
+  const typeLabel = data.type === "online" ? "Online"
+                  : data.type === "presencial" ? "Presencial"
+                  : "Clique para definir";
+
+  const typeIcon = data.type === "online" ? "🌐"
+                 : data.type === "presencial" ? "📍"
+                 : "❓";
+
+  const typeBadgeClass = data.type === "online" ? "online"
+                       : data.type === "presencial" ? "presencial"
+                       : "none";
+
+  // Slots 1-10
+  let slotsHtml = "";
+  for (let i = 1; i <= 10; i++) {
+    const nick = data.slots[i];
+    const isMe = nick && nick === getNick();
+    slotsHtml += `
+      <div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}"
+           data-date="${day.key}" data-slot="${i}" title="${nick ? escapeHtml(nick) : `Slot ${i}`}">
+        ${nick ? escapeHtml(nick) : i}
+      </div>
+    `;
+  }
+
+  // Complete 1-5
+  let completeHtml = "";
+  for (let i = 1; i <= 5; i++) {
+    const nick = data.complete[i];
+    const isMe = nick && nick === getNick();
+    completeHtml += `
+      <div class="complete-slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}"
+           data-date="${day.key}" data-complete="${i}" title="${nick ? escapeHtml(nick) : `Complete ${i}`}">
+        ${nick ? escapeHtml(nick) : i}
+      </div>
+    `;
+  }
 
   return `
-    <article class="${dayClass}" data-day="${day.key}">
-      <header class="day-card-header">
-        <div>
-          <h2 class="day-card-title">${escapeHtml(day.short)}</h2>
-          <span class="day-card-date">${escapeHtml(day.long)}</span>
-        </div>
-        ${isToday ? '<span class="day-card-badge is-today"><span class="dot"></span> Hoje</span>' : ""}
+    <article class="mix-card status-${status.id}" data-date="${day.key}">
+      <header class="mix-card-header">
+        <div class="mix-day-name">${escapeHtml(day.dayName)}</div>
+        <div class="mix-date">${escapeHtml(day.dateBR)}${day.isToday ? " • HOJE" : ""}</div>
       </header>
-      <div class="day-lists">
-        ${renderDayLists(day.key, listsOfDay)}
+
+      <div class="mix-type-badge ${typeBadgeClass}" data-action="set-type" data-date="${day.key}">
+        ${typeIcon} ${typeLabel}
       </div>
-      <button class="btn-new-list" data-action="create" data-day="${day.key}" data-day-name="${escapeHtml(day.long)}">+ Nova lista</button>
+
+      <section class="slots-section">
+        <div class="slots-label">SLOTS (${count}/10)</div>
+        <div class="slots-grid">${slotsHtml}</div>
+      </section>
+
+      <section class="complete-section">
+        <div class="complete-label">COMPLETE <span>(${completeCount}/5)</span> — em dúvida</div>
+        <div class="complete-grid">${completeHtml}</div>
+      </section>
+
+      <div class="mix-counter status-${status.id}">${count}/10 — ${status.label}</div>
     </article>
   `;
 }
 
-function renderDayLists(dateKey, listsOfDay) {
-  const entries = Object.entries(listsOfDay);
-  if (!entries.length) {
-    return `<div class="day-empty">Nenhuma lista ainda</div>`;
-  }
-  // Ordena por horário.
-  entries.sort((a, b) => (a[1].time || "").localeCompare(b[1].time || ""));
-  return entries.map(([listId, list]) => renderListItem(dateKey, listId, list)).join("");
-}
-
-function renderListItem(dateKey, listId, list) {
-  const nick = getNick() || "";
-  const playersCount = countPlayers(list);
-  const status = getStatus(playersCount);
-  const waitCount = countWaitlist(list);
-  const slots = renderSlots(list, nick);
-  const waitlist = renderWaitlist(list, nick, waitCount);
-  const meInPlayers = isInList(list, nick);
-  const meInWait = isInWaitlist(list, nick);
-  const iAmCreator = isCreator(list, nick);
-  const full = playersCount >= 10 && waitCount >= 5;
-  const typeLabel = list.type === "online" ? "Online" : "Presencial";
-  const typeIcon = list.type === "online" ? "🌐" : "📍";
-
-  return `
-    <div class="list-item status-${status.id}" data-list="${listId}">
-      <header class="list-item-header">
-        <span class="list-time">${escapeHtml(list.time || "—")}</span>
-        <span class="list-counter status-${status.id}">${playersCount}/10</span>
-      </header>
-      <div class="list-type ${escapeHtml(list.type)}">${typeIcon} ${escapeHtml(typeLabel)}</div>
-      <div class="slots status-${status.id}">${slots}</div>
-      ${waitlist}
-      <div class="list-creator">criado por <strong>${escapeHtml(list.creator)}</strong></div>
-      <div class="list-actions">
-        ${meInPlayers || meInWait
-          ? `<button class="btn-leave" data-action="leave" data-day="${dateKey}" data-list="${listId}">Sair</button>`
-          : full
-            ? `<span class="toast-message">Lista cheia</span>`
-            : `<button class="btn-join" data-action="join" data-day="${dateKey}" data-list="${listId}">Entrar</button>`
-        }
-        ${iAmCreator ? `<button class="btn-delete" data-action="delete" data-day="${dateKey}" data-list="${listId}" title="Apagar lista">🗑</button>` : ""}
-      </div>
-    </div>
-  `;
-}
-
-function renderSlots(list, nick) {
-  const players = list.players || {};
-  const order = Object.keys(players).sort(
-    (a, b) => (players[a].joinedAt || 0) - (players[b].joinedAt || 0)
-  );
-  // Garante ordem do criador primeiro, depois por joinedAt.
-  const creator = list.creator;
-  const ordered = [
-    ...(creator && order.includes(creator) ? [creator] : []),
-    ...order.filter((n) => n !== creator),
-  ];
-  // Preenche até 10.
-  const slots = [];
-  for (let i = 0; i < 10; i++) {
-    const n = ordered[i];
-    if (n) {
-      const isMe = n === nick;
-      const isCreatorSlot = n === creator;
-      slots.push(
-        `<div class="slot filled ${isMe ? "is-me" : ""} ${isCreatorSlot ? "creator" : ""}" title="${escapeHtml(n)}${isCreatorSlot ? " (criador)" : ""}">${escapeHtml(n)}</div>`
-      );
-    } else {
-      slots.push(`<div class="slot" title="Vaga livre">${i + 1}</div>`);
-    }
-  }
-  return slots.join("");
-}
-
-function renderWaitlist(list, nick, waitCount) {
-  if (!waitCount) return "";
-  const items = Object.keys(list.waitlist || {}).sort(
-    (a, b) => (list.waitlist[a].joinedAt || 0) - (list.waitlist[b].joinedAt || 0)
-  );
-  const tags = items
-    .map((n) => `<span class="waitlist-tag ${n === nick ? "is-me" : ""}">${escapeHtml(n)}</span>`)
-    .join("");
-  return `
-    <div class="waitlist">
-      <span class="waitlist-label">Reservas (${waitCount}/5)</span>
-      ${tags}
-    </div>
-  `;
-}
-
-// ---- Render geral ----
+// Renderiza todos os cards
 function render() {
-  const grid = document.getElementById("days-grid");
   if (!grid) return;
-  const days = visibleDays();
-  grid.innerHTML = days.map(renderDayCard).join("");
+
+  const days = getNext10Days();
+
+  // Primeiro gera os cards
+  const cardsHtml = days.map(renderMixCard).join("");
+
+  // Envolve em duas linhas de 5
+  grid.innerHTML = cardsHtml;
 }
 
-// ---- Subscribe no DB ----
-onAllListsChange((snap) => {
-  allLists = snap || {};
-  render();
-});
-
-// ---- Modal de criar lista ----
-function setupCreateModal() {
-  const modal = document.getElementById("modal-create");
-  const form = document.getElementById("form-create");
-  const timeInput = document.getElementById("input-time");
-  const dayLabel = document.getElementById("modal-create-day");
-  const cancelBtns = modal.querySelectorAll("[data-close]");
-
-  let pendingDayKey = null;
-  let pendingDayName = null;
-
-  cancelBtns.forEach((b) => b.addEventListener("click", () => modal.close()));
-
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest('[data-action="create"]');
-    if (!btn) return;
-    const nick = getNick();
-    if (!nick) {
-      toast("Define um nick antes de criar uma lista.", "error");
-      return;
-    }
-    pendingDayKey = btn.dataset.day;
-    pendingDayName = btn.dataset.dayName;
-    dayLabel.textContent = pendingDayName;
-    // Default: próximo horário redondo mais próximo.
-    timeInput.value = suggestedTime();
-    modal.showModal();
-    setTimeout(() => timeInput.focus(), 50);
-  });
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!pendingDayKey) return;
-    const fd = new FormData(form);
-    const type = fd.get("type");
-    const time = timeInput.value;
-    const nick = getNick();
-    if (!nick) {
-      toast("Define um nick antes.", "error");
-      return;
-    }
-    try {
-      await createList(pendingDayKey, { type, time, creator: nick });
-      modal.close();
-      toast("Lista criada!", "success");
-    } catch (err) {
-      toast(err.message || "Erro ao criar lista", "error");
-    }
-  });
-}
-
-function suggestedTime() {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() < 30 ? 30 : 60);
-  d.setMinutes(0);
-  d.setSeconds(0);
-  d.setMilliseconds(0);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-// ---- Ações: entrar / sair / apagar ----
-function setupListActions() {
-  document.addEventListener("click", async (e) => {
-    const btn = e.target.closest("[data-action]");
-    if (!btn) return;
-    const action = btn.dataset.action;
-    if (action === "create") return; // tratado em setupCreateModal
-    const dateKey = btn.dataset.day;
-    const listId = btn.dataset.list;
-    const nick = getNick();
-    if (!nick) {
-      toast("Define um nick antes.", "error");
-      return;
-    }
-    btn.disabled = true;
-    try {
-      if (action === "join") {
-        const r = await joinList(dateKey, listId, nick);
-        if (r.wentTo === "waitlist") toast("Você entrou na reserva.", "success");
-        else if (r.wentTo === "players") toast("Confirmado!", "success");
-        else toast("Você já está nessa lista.", "success");
-      } else if (action === "leave") {
-        await leaveList(dateKey, listId, nick);
-        toast("Você saiu da lista.", "success");
-      } else if (action === "delete") {
-        if (!confirm("Apagar essa lista? Essa ação não tem volta.")) return;
-        await deleteList(dateKey, listId, nick);
-        toast("Lista apagada.", "success");
-      }
-    } catch (err) {
-      toast(err.message || "Erro", "error");
-    } finally {
-      btn.disabled = false;
-    }
-  });
-}
-
-// ---- Toast ----
+// Toast
 function toast(msg, kind = "") {
-  const area = document.getElementById("toast-area");
-  if (!area) return;
+  if (!toastArea) return;
   const el = document.createElement("div");
   el.className = `toast ${kind}`;
   el.textContent = msg;
-  area.appendChild(el);
+  toastArea.appendChild(el);
   setTimeout(() => {
-    el.style.transition = "opacity .2s, transform .2s";
+    el.style.transition = "opacity .2s";
     el.style.opacity = "0";
-    el.style.transform = "translateY(-6px)";
-    setTimeout(() => el.remove(), 220);
-  }, 2400);
+    setTimeout(() => el.remove(), 200);
+  }, 2200);
 }
 
-// ---- Boot ----
+// Modal de nick
+function setupNickModal() {
+  // Mostra se não tem nick
+  const nick = getNick();
+  if (!nick && modalNick) {
+    modalNick.showModal();
+  }
+
+  if (nickDisplay) {
+    nickDisplay.textContent = nick || "—";
+  }
+
+  if (changeNickBtn) {
+    changeNickBtn.addEventListener("click", () => {
+      if (inputNick) inputNick.value = getNick() || "";
+      if (modalNick) modalNick.showModal();
+    });
+  }
+
+  if (formNick) {
+    formNick.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const val = sanitizeNick(inputNick.value);
+      if (val.length < 2) {
+        inputNick.setCustomValidity("Mínimo 2 caracteres");
+        inputNick.reportValidity();
+        return;
+      }
+      setNick(val);
+      if (nickDisplay) nickDisplay.textContent = val;
+      if (modalNick) modalNick.close();
+      render();
+    });
+  }
+}
+
+// Modal de tipo (online/presencial)
+let pendingTypeDate = null;
+
+function setupTypeModal() {
+  const cancelBtn = modalType?.querySelector("[data-close]");
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => {
+      if (modalType) modalType.close();
+    });
+  }
+
+  if (formType) {
+    formType.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!pendingTypeDate) return;
+
+      const fd = new FormData(formType);
+      const type = fd.get("mix-type");
+
+      ensureDay(pendingTypeDate);
+      mixState[pendingTypeDate].type = type;
+      saveState();
+      render();
+      if (modalType) modalType.close();
+      toast(`Mix definido como ${type}!`, "success");
+    });
+  }
+
+  // Abre modal ao clicar no badge
+  document.addEventListener("click", (e) => {
+    const badge = e.target.closest('[data-action="set-type"]');
+    if (!badge) return;
+
+    const dateKey = badge.dataset.date;
+    pendingTypeDate = dateKey;
+
+    const day = getNext10Days().find(d => d.key === dateKey);
+    if (modalTypeDay) {
+      modalTypeDay.textContent = day ? `${day.dayLong} (${day.dateBR})` : dateKey;
+    }
+
+    // Marca o tipo atual
+    const currentType = mixState[dateKey]?.type || "online";
+    const radios = formType?.querySelectorAll('input[name="mix-type"]');
+    radios?.forEach(r => {
+      r.checked = r.value === currentType;
+    });
+
+    if (modalType) modalType.showModal();
+  });
+}
+
+// Clique em slot
+function setupSlotClick() {
+  document.addEventListener("click", (e) => {
+    const slot = e.target.closest(".slot");
+    const complete = e.target.closest(".complete-slot");
+
+    if (!slot && !complete) return;
+
+    const nick = getNick();
+    if (!nick) {
+      toast("Define teu nick primeiro!", "error");
+      if (modalNick) modalNick.showModal();
+      return;
+    }
+
+    if (slot) {
+      const dateKey = slot.dataset.date;
+      const slotNum = parseInt(slot.dataset.slot, 10);
+      handleSlotClick(dateKey, slotNum, nick);
+    } else if (complete) {
+      const dateKey = complete.dataset.date;
+      const compNum = parseInt(complete.dataset.complete, 10);
+      handleCompleteClick(dateKey, compNum, nick);
+    }
+  });
+}
+
+function handleSlotClick(dateKey, slotNum, nick) {
+  ensureDay(dateKey);
+  const current = mixState[dateKey].slots[slotNum];
+
+  if (current === nick) {
+    // Sai do slot
+    delete mixState[dateKey].slots[slotNum];
+    saveState();
+    render();
+    toast("Você saiu do slot", "success");
+  } else if (!current) {
+    // Verifica se já está em outro slot
+    const existingSlot = Object.entries(mixState[dateKey].slots).find(([_, n]) => n === nick);
+    const existingComplete = Object.entries(mixState[dateKey].complete || {}).find(([_, n]) => n === nick);
+
+    if (existingSlot) {
+      // Move de um slot pro outro
+      delete mixState[dateKey].slots[existingSlot[0]];
+    }
+    if (existingComplete) {
+      // Remove do complete se estava
+      delete mixState[dateKey].complete[existingComplete[0]];
+    }
+
+    mixState[dateKey].slots[slotNum] = nick;
+    saveState();
+    render();
+    toast(`Slot ${slotNum} reservado!`, "success");
+  } else {
+    toast("Esse slot já está ocupado", "error");
+  }
+}
+
+function handleCompleteClick(dateKey, compNum, nick) {
+  ensureDay(dateKey);
+  if (!mixState[dateKey].complete) mixState[dateKey].complete = {};
+
+  const current = mixState[dateKey].complete[compNum];
+
+  if (current === nick) {
+    delete mixState[dateKey].complete[compNum];
+    saveState();
+    render();
+    toast("Você saiu do complete", "success");
+  } else if (!current) {
+    // Remove de outros lugares
+    const existingSlot = Object.entries(mixState[dateKey].slots).find(([_, n]) => n === nick);
+    const existingComplete = Object.entries(mixState[dateKey].complete).find(([_, n]) => n === nick);
+
+    if (existingSlot) {
+      delete mixState[dateKey].slots[existingSlot[0]];
+    }
+    if (existingComplete) {
+      delete mixState[dateKey].complete[existingComplete[0]];
+    }
+
+    mixState[dateKey].complete[compNum] = nick;
+    saveState();
+    render();
+    toast(`Complete ${compNum} reservado!`, "success");
+  } else {
+    toast("Esse complete já está ocupado", "error");
+  }
+}
+
+// Inicialização
 function boot() {
+  loadState();
   render();
-  setupCreateModal();
-  setupListActions();
+  setupNickModal();
+  setupTypeModal();
+  setupSlotClick();
 }
 
 if (document.readyState === "loading") {

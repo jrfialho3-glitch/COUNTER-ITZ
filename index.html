@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ominirout — Mixes CS2</title>
+  <title>COUNTER-ITZ 1.0 - By JuninN</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -12,8 +12,11 @@
 <body>
   <header class="topbar">
     <div class="logo">
-      <span class="logo-mark">O</span>
-      <span>Ominirout</span>
+      <span class="logo-mark">CI</span>
+      <div class="logo-text">
+        <span class="logo-title">COUNTER-ITZ 1.0</span>
+        <span class="logo-subtitle">By JuninN</span>
+      </div>
     </div>
     <div class="who">
       <span>Jogando como <strong id="current-nick">—</strong></span>
@@ -23,21 +26,21 @@
   </header>
 
   <main class="container">
-    <h1 class="page-title">Mixes da semana</h1>
-    <p class="page-subtitle">Escolhe um dia, monta a lista e bora jogar. As cores mostram como a lista tá: verde faltando gente, amarelo time formado, vermelho lista fechada.</p>
+    <h1 class="page-title">Mixes da Semana</h1>
+    <p class="page-subtitle">Seleciona um dia, escolhe online ou presencial, e reserva teu slot!</p>
 
-    <div id="days-grid" class="days-grid"></div>
+    <div id="mixes-grid" class="mixes-grid"></div>
   </main>
 
   <!-- Modal de nick (primeira visita) -->
   <dialog id="modal-nick">
     <div class="modal modal-nick">
-      <div class="logo-big">O</div>
-      <h2>Bem-vindo ao Ominirout</h2>
-      <p>Como você quer ser chamado nas listas?</p>
+      <div class="logo-big">CI</div>
+      <h2>Bem-vindo ao COUNTER-ITZ</h2>
+      <p>Digita teu nick pra entrar nos mixes:</p>
       <form id="form-nick">
         <div class="form-row">
-          <input id="input-nick" type="text" maxlength="24" placeholder="Seu nick" required autocomplete="off" />
+          <input id="input-nick" type="text" maxlength="24" placeholder="Teu nick" required autocomplete="off" />
         </div>
         <div class="actions">
           <button type="submit" class="btn-confirm" id="btn-save-nick">Entrar</button>
@@ -46,26 +49,21 @@
     </div>
   </dialog>
 
-  <!-- Modal de criar lista -->
-  <dialog id="modal-create">
+  <!-- Modal de escolher tipo (online/presencial) -->
+  <dialog id="modal-type">
     <div class="modal">
-      <h2>Nova lista</h2>
-      <p>Cria uma lista pro dia <span id="modal-create-day" class="who"></span>.</p>
-      <form id="form-create">
+      <h2>Tipo do Mix</h2>
+      <p>Escolhe se é online ou presencial pro dia <span id="modal-type-day"></span>:</p>
+      <form id="form-type">
         <div class="form-row">
-          <label>Tipo</label>
           <div class="radio-group">
-            <label><input type="radio" name="type" value="online" checked /><span>Online</span></label>
-            <label><input type="radio" name="type" value="presencial" /><span>Presencial</span></label>
+            <label><input type="radio" name="mix-type" value="online" checked /><span>🌐 Online</span></label>
+            <label><input type="radio" name="mix-type" value="presencial" /><span>📍 Presencial</span></label>
           </div>
-        </div>
-        <div class="form-row">
-          <label for="input-time">Horário</label>
-          <input id="input-time" type="time" required />
         </div>
         <div class="actions">
           <button type="button" class="btn-cancel" data-close>Cancelar</button>
-          <button type="submit" class="btn-confirm">Criar lista</button>
+          <button type="submit" class="btn-confirm">Confirmar</button>
         </div>
       </form>
     </div>
