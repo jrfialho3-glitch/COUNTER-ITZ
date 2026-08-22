@@ -23,6 +23,7 @@
       <button id="change-nick" class="btn-ghost" type="button">Trocar</button>
     </div>
     <a href="historico.html" class="btn-ghost">Histórico</a>
+    <button id="admin-btn" class="btn-ghost" type="button">Admin</button>
   </header>
 
   <main class="container">
@@ -41,6 +42,10 @@
       <form id="form-nick">
         <div class="form-row">
           <input id="input-nick" type="text" maxlength="24" placeholder="Teu nick" required autocomplete="off" />
+        </div>
+        <div class="form-row">
+          <input id="input-pass" type="password" maxlength="4" pattern="\d{4}" placeholder="Senha de 4 números" required autocomplete="new-password" />
+          <small class="pass-hint">Se o nick já existe: digita tua senha. Se é novo: cria uma senha de 4 números.</small>
         </div>
         <div class="actions">
           <button type="submit" class="btn-confirm" id="btn-save-nick">Entrar</button>
@@ -66,6 +71,43 @@
           <button type="submit" class="btn-confirm">Confirmar</button>
         </div>
       </form>
+    </div>
+  </dialog>
+
+  <!-- Modal Admin -->
+  <dialog id="modal-admin">
+    <div class="modal modal-admin">
+      <h2>🔐 Área Admin</h2>
+      <p>Login: JuninN / Senha: manu123@</p>
+      <form id="form-admin">
+        <div class="form-row">
+          <label for="admin-user">Usuário</label>
+          <input id="admin-user" type="text" required autocomplete="username" />
+        </div>
+        <div class="form-row">
+          <label for="admin-pass">Senha</label>
+          <input id="admin-pass" type="password" required autocomplete="current-password" />
+        </div>
+        <div class="actions">
+          <button type="button" class="btn-cancel" data-close>Cancelar</button>
+          <button type="submit" class="btn-confirm">Entrar</button>
+        </div>
+      </form>
+
+      <div id="admin-panel" style="display: none; margin-top: 20px;">
+        <h3>Gerenciar Usuários</h3>
+        <div class="form-row">
+          <label for="ban-nick">Nick para banir/desbanir</label>
+          <input id="ban-nick" type="text" placeholder="Digite o nick" autocomplete="off" />
+        </div>
+        <div class="actions">
+          <button type="button" id="btn-ban" class="btn-danger">Banir</button>
+          <button type="button" id="btn-unban" class="btn-primary">Desbanir</button>
+        </div>
+
+        <h3 style="margin-top: 20px;">Nicks Banidos</h3>
+        <ul id="banned-list" style="list-style: none; padding: 0; max-height: 200px; overflow-y: auto;"></ul>
+      </div>
     </div>
   </dialog>
 

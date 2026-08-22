@@ -1,8 +1,23 @@
 // js/ui-home.js
-// Render da home: 10 cards de mix, 5 em cima e 5 embaixo.
-// Cada card tem 10 slots + 5 complete. Usuário escolhe online/presencial.
+// Render da home: 10 cards de mix, botão copiar, modal de nick com senha, área admin.
 
-import { getNick, setNick } from "./identity.js";
+import {
+  getNick,
+  setNick,
+  setPass,
+  getPass,
+  nickExists,
+  checkPassword,
+  registerNick,
+  isBanned,
+  checkAdmin,
+  setAdmin,
+  isAdminLoggedIn,
+  validateAdmin,
+  getBannedNicks,
+  banNick,
+  unbanNick,
+} from "./identity.js";
 import { getNext10Days, getStatus, sanitizeNick, escapeHtml } from "./utils.js";
 
 // Referências DOM
@@ -10,17 +25,20 @@ const grid = document.getElementById("mixes-grid");
 const modalNick = document.getElementById("modal-nick");
 const formNick = document.getElementById("form-nick");
 const inputNick = document.getElementById("input-nick");
+const inputPass = document.getElementById("input-pass");
 const nickDisplay = document.getElementById("current-nick");
 const changeNickBtn = document.getElementById("change-nick");
 const modalType = document.getElementById("modal-type");
 const formType = document.getElementById("form-type");
 const modalTypeDay = document.getElementById("modal-type-day");
 const toastArea = document.getElementById("toast-area");
+const adminBtn = document.getElementById("admin-btn");
 
-// Estado local: { dateKey: { type: "online"|"presencial"|"none", slots: {1..10: nick|null}, complete: {1..5: nick|null} } }
+// Estado local
 let mixState = {};
+let pendingTypeDate = null;
 
-// Carrega do localStorage
+// Carrega/salva estado
 function loadState() {
   try {
     const saved = localStorage.getItem("counteritz_mixes");
@@ -30,39 +48,61 @@ function loadState() {
   }
 }
 
-// Salva no localStorage
 function saveState() {
   try {
     localStorage.setItem("counteritz_mixes", JSON.stringify(mixState));
   } catch {}
 }
 
-// Inicializa um dia se não existir
 function ensureDay(dateKey) {
   if (!mixState[dateKey]) {
-    mixState[dateKey] = {
-      type: "none",
-      slots: {},
-      complete: {}
-    };
+    mixState[dateKey] = { type: "none", slots: {}, complete: {} };
   }
 }
 
-// Conta slots preenchidos (sem complete)
 function countSlots(dateKey) {
   const day = mixState[dateKey];
   if (!day) return 0;
-  return Object.keys(day.slots || {}).filter(k => day.slots[k]).length;
+  return Object.keys(day.slots || {}).filter((k) => day.slots[k]).length;
 }
 
-// Conta complete preenchidos
 function countComplete(dateKey) {
   const day = mixState[dateKey];
   if (!day) return 0;
-  return Object.keys(day.complete || {}).filter(k => day.complete[k]).length;
+  return Object.keys(day.complete || {}).filter((k) => day.complete[k]).length;
 }
 
-// Renderiza um card de mix
+// Copiar lista para WhatsApp
+function copyListToClipboard(dateKey) {
+  ensureDay(dateKey);
+  const data = mixState[dateKey];
+  const day = getNext10Days().find((d) => d.key === dateKey);
+  const typeLabel = data.type === "online" ? "ONLINE" : data.type === "presencial" ? "PRESENCIAL" : "A DEFINIR";
+
+  let text = `MIX ${day.dayName} ${day.dateBR} ${typeLabel}\n`;
+
+  for (let i = 1; i <= 10; i++) {
+    const nick = data.slots[i];
+    text += `${i} ${nick || ""}\n`;
+  }
+
+  const completeCount = countComplete(dateKey);
+  if (completeCount > 0) {
+    text += `\nCOMPLETE:\n`;
+    for (let i = 1; i <= 5; i++) {
+      const nick = data.complete[i];
+      if (nick) text += `${i} ${nick}\n`;
+    }
+  }
+
+  navigator.clipboard.writeText(text.trim()).then(() => {
+    toast("Lista copiada!", "success");
+  }).catch(() => {
+    toast("Erro ao copiar", "error");
+  });
+}
+
+// Renderiza card
 function renderMixCard(day) {
   ensureDay(day.key);
   const data = mixState[day.key];
@@ -70,32 +110,24 @@ function renderMixCard(day) {
   const status = getStatus(count);
   const completeCount = countComplete(day.key);
 
-  const typeLabel = data.type === "online" ? "Online"
-                  : data.type === "presencial" ? "Presencial"
-                  : "Clique para definir";
+  const typeLabel =
+    data.type === "online" ? "Online" : data.type === "presencial" ? "Presencial" : "Clique para definir";
+  const typeIcon = data.type === "online" ? "🌐" : data.type === "presencial" ? "📍" : "❓";
+  const typeBadgeClass = data.type === "online" ? "online" : data.type === "presencial" ? "presencial" : "none";
 
-  const typeIcon = data.type === "online" ? "🌐"
-                 : data.type === "presencial" ? "📍"
-                 : "❓";
-
-  const typeBadgeClass = data.type === "online" ? "online"
-                       : data.type === "presencial" ? "presencial"
-                       : "none";
-
-  // Slots 1-10
   let slotsHtml = "";
   for (let i = 1; i <= 10; i++) {
     const nick = data.slots[i];
     const isMe = nick && nick === getNick();
+    const isBannedUser = nick && isBanned(nick);
     slotsHtml += `
-      <div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}"
+      <div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""} ${isBannedUser ? "banned" : ""}"
            data-date="${day.key}" data-slot="${i}" title="${nick ? escapeHtml(nick) : `Slot ${i}`}">
         ${nick ? escapeHtml(nick) : i}
       </div>
     `;
   }
 
-  // Complete 1-5
   let completeHtml = "";
   for (let i = 1; i <= 5; i++) {
     const nick = data.complete[i];
@@ -129,25 +161,20 @@ function renderMixCard(day) {
         <div class="complete-grid">${completeHtml}</div>
       </section>
 
-      <div class="mix-counter status-${status.id}">${count}/10 — ${status.label}</div>
+      <div class="mix-actions-row">
+        <button class="btn-copy" data-action="copy" data-date="${day.key}" title="Copiar lista">📋 Copiar</button>
+        <div class="mix-counter status-${status.id}">${count}/10 — ${status.label}</div>
+      </div>
     </article>
   `;
 }
 
-// Renderiza todos os cards
 function render() {
   if (!grid) return;
-
   const days = getNext10Days();
-
-  // Primeiro gera os cards
-  const cardsHtml = days.map(renderMixCard).join("");
-
-  // Envolve em duas linhas de 5
-  grid.innerHTML = cardsHtml;
+  grid.innerHTML = days.map(renderMixCard).join("");
 }
 
-// Toast
 function toast(msg, kind = "") {
   if (!toastArea) return;
   const el = document.createElement("div");
@@ -161,10 +188,10 @@ function toast(msg, kind = "") {
   }, 2200);
 }
 
-// Modal de nick
+// Modal de nick com senha
 function setupNickModal() {
-  // Mostra se não tem nick
   const nick = getNick();
+
   if (!nick && modalNick) {
     modalNick.showModal();
   }
@@ -176,6 +203,7 @@ function setupNickModal() {
   if (changeNickBtn) {
     changeNickBtn.addEventListener("click", () => {
       if (inputNick) inputNick.value = getNick() || "";
+      if (inputPass) inputPass.value = "";
       if (modalNick) modalNick.showModal();
     });
   }
@@ -183,30 +211,66 @@ function setupNickModal() {
   if (formNick) {
     formNick.addEventListener("submit", (e) => {
       e.preventDefault();
-      const val = sanitizeNick(inputNick.value);
-      if (val.length < 2) {
+      const nickVal = sanitizeNick(inputNick.value);
+      const passVal = inputPass ? inputPass.value.trim() : "";
+
+      if (nickVal.length < 2) {
         inputNick.setCustomValidity("Mínimo 2 caracteres");
         inputNick.reportValidity();
         return;
       }
-      setNick(val);
-      if (nickDisplay) nickDisplay.textContent = val;
+
+      if (isBanned(nickVal)) {
+        toast("Esse nick está banido", "error");
+        return;
+      }
+
+      // Se o nick já existe
+      if (nickExists(nickVal)) {
+        if (!passVal || passVal.length !== 4) {
+          inputPass?.setCustomValidity("Digite a senha de 4 números");
+          inputPass?.reportValidity();
+          return;
+        }
+        if (!checkPassword(nickVal, passVal)) {
+          inputPass?.setCustomValidity("Senha incorreta");
+          inputPass?.reportValidity();
+          return;
+        }
+        // Senha correta
+        setNick(nickVal);
+        setPass(passVal);
+        if (nickDisplay) nickDisplay.textContent = nickVal;
+        if (modalNick) modalNick.close();
+        render();
+        toast("Bem-vindo de volta!", "success");
+        return;
+      }
+
+      // Novo nick - precisa criar senha
+      if (!passVal || passVal.length !== 4 || !/^\d{4}$/.test(passVal)) {
+        inputPass?.setCustomValidity("Crie uma senha de 4 números");
+        inputPass?.reportValidity();
+        return;
+      }
+
+      registerNick(nickVal, passVal);
+      setNick(nickVal);
+      setPass(passVal);
+      if (nickDisplay) nickDisplay.textContent = nickVal;
       if (modalNick) modalNick.close();
       render();
+      toast("Nick registrado!", "success");
     });
   }
 }
 
-// Modal de tipo (online/presencial)
-let pendingTypeDate = null;
-
+// Modal de tipo
 function setupTypeModal() {
   const cancelBtn = modalType?.querySelector("[data-close]");
 
   if (cancelBtn) {
-    cancelBtn.addEventListener("click", () => {
-      if (modalType) modalType.close();
-    });
+    cancelBtn.addEventListener("click", () => modalType?.close());
   }
 
   if (formType) {
@@ -221,47 +285,50 @@ function setupTypeModal() {
       mixState[pendingTypeDate].type = type;
       saveState();
       render();
-      if (modalType) modalType.close();
+      modalType?.close();
       toast(`Mix definido como ${type}!`, "success");
     });
   }
 
-  // Abre modal ao clicar no badge
   document.addEventListener("click", (e) => {
     const badge = e.target.closest('[data-action="set-type"]');
     if (!badge) return;
 
-    const dateKey = badge.dataset.date;
-    pendingTypeDate = dateKey;
+    pendingTypeDate = badge.dataset.date;
+    const day = getNext10Days().find((d) => d.key === pendingTypeDate);
 
-    const day = getNext10Days().find(d => d.key === dateKey);
     if (modalTypeDay) {
-      modalTypeDay.textContent = day ? `${day.dayLong} (${day.dateBR})` : dateKey;
+      modalTypeDay.textContent = day ? `${day.dayLong} (${day.dateBR})` : pendingTypeDate;
     }
 
-    // Marca o tipo atual
-    const currentType = mixState[dateKey]?.type || "online";
-    const radios = formType?.querySelectorAll('input[name="mix-type"]');
-    radios?.forEach(r => {
+    const currentType = mixState[pendingTypeDate]?.type || "online";
+    formType?.querySelectorAll('input[name="mix-type"]').forEach((r) => {
       r.checked = r.value === currentType;
     });
 
-    if (modalType) modalType.showModal();
+    modalType?.showModal();
   });
 }
 
-// Clique em slot
+// Clique em slot/complete
 function setupSlotClick() {
   document.addEventListener("click", (e) => {
     const slot = e.target.closest(".slot");
     const complete = e.target.closest(".complete-slot");
+    const copyBtn = e.target.closest('[data-action="copy"]');
+
+    if (copyBtn) {
+      const dateKey = copyBtn.dataset.date;
+      copyListToClipboard(dateKey);
+      return;
+    }
 
     if (!slot && !complete) return;
 
     const nick = getNick();
     if (!nick) {
       toast("Define teu nick primeiro!", "error");
-      if (modalNick) modalNick.showModal();
+      modalNick?.showModal();
       return;
     }
 
@@ -282,24 +349,18 @@ function handleSlotClick(dateKey, slotNum, nick) {
   const current = mixState[dateKey].slots[slotNum];
 
   if (current === nick) {
-    // Sai do slot
     delete mixState[dateKey].slots[slotNum];
     saveState();
     render();
     toast("Você saiu do slot", "success");
   } else if (!current) {
-    // Verifica se já está em outro slot
-    const existingSlot = Object.entries(mixState[dateKey].slots).find(([_, n]) => n === nick);
-    const existingComplete = Object.entries(mixState[dateKey].complete || {}).find(([_, n]) => n === nick);
-
-    if (existingSlot) {
-      // Move de um slot pro outro
-      delete mixState[dateKey].slots[existingSlot[0]];
-    }
-    if (existingComplete) {
-      // Remove do complete se estava
-      delete mixState[dateKey].complete[existingComplete[0]];
-    }
+    // Remove de outros slots/complete
+    Object.entries(mixState[dateKey].slots).forEach(([k, n]) => {
+      if (n === nick) delete mixState[dateKey].slots[k];
+    });
+    Object.entries(mixState[dateKey].complete || {}).forEach(([k, n]) => {
+      if (n === nick) delete mixState[dateKey].complete[k];
+    });
 
     mixState[dateKey].slots[slotNum] = nick;
     saveState();
@@ -323,15 +384,12 @@ function handleCompleteClick(dateKey, compNum, nick) {
     toast("Você saiu do complete", "success");
   } else if (!current) {
     // Remove de outros lugares
-    const existingSlot = Object.entries(mixState[dateKey].slots).find(([_, n]) => n === nick);
-    const existingComplete = Object.entries(mixState[dateKey].complete).find(([_, n]) => n === nick);
-
-    if (existingSlot) {
-      delete mixState[dateKey].slots[existingSlot[0]];
-    }
-    if (existingComplete) {
-      delete mixState[dateKey].complete[existingComplete[0]];
-    }
+    Object.entries(mixState[dateKey].slots).forEach(([k, n]) => {
+      if (n === nick) delete mixState[dateKey].slots[k];
+    });
+    Object.entries(mixState[dateKey].complete).forEach(([k, n]) => {
+      if (n === nick) delete mixState[dateKey].complete[k];
+    });
 
     mixState[dateKey].complete[compNum] = nick;
     saveState();
@@ -342,6 +400,118 @@ function handleCompleteClick(dateKey, compNum, nick) {
   }
 }
 
+// Modal Admin
+function setupAdminModal() {
+  const modalAdmin = document.getElementById("modal-admin");
+  const formAdmin = document.getElementById("form-admin");
+  const adminUser = document.getElementById("admin-user");
+  const adminPass = document.getElementById("admin-pass");
+  const adminPanel = document.getElementById("admin-panel");
+  const banInput = document.getElementById("ban-nick");
+  const btnBan = document.getElementById("btn-ban");
+  const btnUnban = document.getElementById("btn-unban");
+  const bannedList = document.getElementById("banned-list");
+  const cancelBtn = modalAdmin?.querySelector("[data-close]");
+
+  if (!modalAdmin || !adminBtn) return;
+
+  // Abrir modal admin
+  adminBtn.addEventListener("click", () => {
+    if (isAdminLoggedIn()) {
+      showAdminPanel();
+    } else {
+      if (adminPanel) adminPanel.style.display = "none";
+      modalAdmin.showModal();
+    }
+  });
+
+  // Fechar modal
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => modalAdmin.close());
+  }
+
+  // Login admin
+  if (formAdmin) {
+    formAdmin.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const user = adminUser?.value.trim();
+      const pass = adminPass?.value;
+
+      if (validateAdmin(user, pass)) {
+        setAdmin(true);
+        toast("Login admin realizado!", "success");
+        showAdminPanel();
+      } else {
+        toast("Usuário ou senha incorretos", "error");
+      }
+    });
+  }
+
+  function showAdminPanel() {
+    if (adminPanel) adminPanel.style.display = "block";
+    if (formAdmin) formAdmin.style.display = "none";
+    renderBannedList();
+    modalAdmin.showModal();
+  }
+
+  function renderBannedList() {
+    if (!bannedList) return;
+    const banned = getBannedNicks();
+    if (banned.length === 0) {
+      bannedList.innerHTML = '<li style="color: var(--text-faint);">Nenhum nick banido</li>';
+      return;
+    }
+    bannedList.innerHTML = banned.map(nick => `
+      <li>
+        <span>${escapeHtml(nick)}</span>
+        <button class="unban-btn" data-unban="${escapeHtml(nick)}">Desbanir</button>
+      </li>
+    `).join("");
+  }
+
+  // Banir nick
+  if (btnBan) {
+    btnBan.addEventListener("click", () => {
+      const nick = sanitizeNick(banInput?.value);
+      if (!nick) {
+        toast("Digite um nick", "error");
+        return;
+      }
+      banNick(nick);
+      toast(`${nick} foi banido!`, "success");
+      renderBannedList();
+      render();
+      if (banInput) banInput.value = "";
+    });
+  }
+
+  // Desbanir nick
+  if (btnUnban) {
+    btnUnban.addEventListener("click", () => {
+      const nick = sanitizeNick(banInput?.value);
+      if (!nick) {
+        toast("Digite um nick", "error");
+        return;
+      }
+      unbanNick(nick);
+      toast(`${nick} foi desbanido!`, "success");
+      renderBannedList();
+      if (banInput) banInput.value = "";
+    });
+  }
+
+  // Desbanir pelo botão na lista
+  document.addEventListener("click", (e) => {
+    const unbanBtn = e.target.closest("[data-unban]");
+    if (!unbanBtn) return;
+    const nick = unbanBtn.dataset.unban;
+    unbanNick(nick);
+    toast(`${nick} foi desbanido!`, "success");
+    renderBannedList();
+    render();
+  });
+}
+
 // Inicialização
 function boot() {
   loadState();
@@ -349,6 +519,7 @@ function boot() {
   setupNickModal();
   setupTypeModal();
   setupSlotClick();
+  setupAdminModal();
 }
 
 if (document.readyState === "loading") {
