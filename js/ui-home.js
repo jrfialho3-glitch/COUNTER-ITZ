@@ -13,6 +13,7 @@ import {
   isAdminLoggedIn,
   loginAdmin,
   logoutAdmin,
+  validateAdmin,
   getBannedNicks,
   banNick,
   unbanNick,
@@ -388,7 +389,7 @@ function copyListToClipboard(dateKey) {
 function setupAdminModal() {
   const modalAdmin = document.getElementById("modal-admin");
   const formAdmin = document.getElementById("form-admin");
-  const adminEmail = document.getElementById("admin-email");
+  const adminUser = document.getElementById("admin-user");
   const adminPass = document.getElementById("admin-pass");
   const adminPanel = document.getElementById("admin-panel");
   const banInput = document.getElementById("ban-nick");
@@ -402,10 +403,10 @@ function setupAdminModal() {
 
   if (!modalAdmin || !adminBtn) return;
 
-  // Atualiza campos do form admin (email em vez de user)
-  if (adminEmail) {
-    adminEmail.type = "email";
-    adminEmail.placeholder = "Email do admin";
+  // Voltar input para text (username)
+  if (adminUser) {
+    adminUser.type = "text";
+    adminUser.placeholder = "Usuário (junin)";
   }
 
   // Abrir modal admin
@@ -425,19 +426,19 @@ function setupAdminModal() {
     cancelBtn.addEventListener("click", () => modalAdmin.close());
   }
 
-  // Login admin (Firebase Auth)
+  // Login admin (junin / manu123@)
   if (formAdmin) {
     formAdmin.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const email = adminEmail?.value.trim();
+      const user = adminUser?.value.trim();
       const pass = adminPass?.value;
 
-      const success = await loginAdmin(email, pass);
+      const success = await loginAdmin(user, pass);
       if (success) {
         toast("Login admin realizado!", "success");
         showAdminPanel();
       } else {
-        toast("Email/senha incorretos ou não é admin", "error");
+        toast("Usuário ou senha incorretos", "error");
       }
     });
   }

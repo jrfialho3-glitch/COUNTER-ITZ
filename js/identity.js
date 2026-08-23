@@ -1,29 +1,29 @@
 // js/identity.js
-// Sistema de identidade, níveis e admin usando Firebase Auth + RTDB
-// TODOS OS DADOS AGORA SÃO SINCRONIZADOS EM TEMPO REAL VIA FIREBASE
+// Gerencia nick, senha, níveis, ban e admin usando Firebase RTDB (tempo real)
+// Admin login: junin / manu123@ (verificado client-side)
 
-import { ref, onValue, set, update, remove, get, push, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { db, auth } from "./firebase-config.js";
+import { ref, onValue, set, update, remove, get, push } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { db } from "./firebase-config.js";
 import { escapeHtml } from "./utils.js";
 
-// Chaves do localStorage (apenas para sessão atual do nick)
+// Credenciais do admin (hardcoded - apenas client-side, ações de admin validadas antes de escrever no DB)
+const ADMIN_USER = "junin";
+const ADMIN_PASS = "manu123@";
+
+// Chaves do localStorage
 const NICK_KEY = "counteritz_nick";
 const PASS_KEY = "counteritz_pass";
+const ADMIN_SESSION_KEY = "counteritz_admin_session";
 
 let currentNick = null;
 let currentPass = null;
-let adminUnsubscribe = null;
-let playersUnsubscribe = null;
-let bannedUnsubscribe = null;
-let mixesUnsubscribe = null;
 let isAdminUser = false;
 let playersCache = {};
 let bannedCache = [];
 let mixesCache = {};
-let authReady = false;
+let listenersInitialized = false;
 
-// Callbacks para notificar UI de mudanças
+// Callbacks para notificar UI
 const listeners = new Set();
 function notifyListeners() {
   listeners.forEach(cb => cb());
@@ -36,7 +36,6 @@ export function subscribe(cb) {
 
 // ---- Sistema de níveis (cores degradadas) ----
 export function getLevelColor(level) {
-  // 1k = azul claro, 10k = azul escuro, 15k = rosa, 20k = roxo, 25k = vermelho, 30k = amarelo
   const levels = [
     { max: 1000, color: "#38bdf8" },    // azul claro
     { max: 10000, color: "#0c4a6e" },   // azul escuro
@@ -61,19 +60,11 @@ export function getLevelColor(level) {
 function interpolateColor(color1, color2, ratio) {
   const c1 = parseInt(color1.slice(1), 16);
   const c2 = parseInt(color2.slice(1), 16);
-
-  const r1 = (c1 >> 16) & 255;
-  const g1 = (c1 >> 8) & 255;
-  const b1 = c1 & 255;
-
-  const r2 = (c2 >> 16) & 255;
-  const g2 = (c2 >> 8) & 255;
-  const b2 = c2 & 255;
-
+  const r1 = (c1 >> 16) & 255, g1 = (c1 >> 8) & 255, b1 = c1 & 255;
+  const r2 = (c2 >> 16) & 255, g2 = (c2 >> 8) & 255, b2 = c2 & 255;
   const r = Math.round(r1 + (r2 - r1) * ratio);
   const g = Math.round(g1 + (g2 - g1) * ratio);
   const b = Math.round(b1 + (b2 - b1) * ratio);
-
   return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
 }
 
@@ -83,7 +74,7 @@ export function formatLevel(level) {
   return level.toString();
 }
 
-// ---- Session local (nick atual) ----
+// ---- Session local ----
 export function getNick() {
   if (currentNick) return currentNick;
   try {
@@ -131,93 +122,67 @@ export function clearSession() {
 
 // ---- Firebase Listeners (tempo real) ----
 function startListeners() {
-  if (playersUnsubscribe) return; // já iniciado
+  if (listenersInitialized) return;
 
-  // Players registry
   const playersRef = ref(db, "players");
-  playersUnsubscribe = onValue(playersRef, (snap) => {
+  onValue(playersRef, (snap) => {
     playersCache = snap.val() || {};
     notifyListeners();
   });
 
-  // Banned nicks
   const bannedRef = ref(db, "banned");
-  bannedUnsubscribe = onValue(bannedRef, (snap) => {
+  onValue(bannedRef, (snap) => {
     bannedCache = snap.val() || [];
     notifyListeners();
   });
 
-  // Mixes
   const mixesRef = ref(db, "mixes");
-  mixesUnsubscribe = onValue(mixesRef, (snap) => {
+  onValue(mixesRef, (snap) => {
     mixesCache = snap.val() || {};
     notifyListeners();
   });
+
+  listenersInitialized = true;
 }
 
-function stopListeners() {
-  if (playersUnsubscribe) { playersUnsubscribe(); playersUnsubscribe = null; }
-  if (bannedUnsubscribe) { bannedUnsubscribe(); bannedUnsubscribe = null; }
-  if (mixesUnsubscribe) { mixesUnsubscribe(); mixesUnsubscribe = null; }
-  if (adminUnsubscribe) { adminUnsubscribe(); adminUnsubscribe = null; }
-}
+// Inicia listeners imediatamente
+startListeners();
 
-// ---- Auth Admin ----
+// ---- Admin (client-side validation) ----
 export function isAdminLoggedIn() {
-  return isAdminUser && auth.currentUser !== null;
-}
-
-export async function loginAdmin(email, password) {
+  if (isAdminUser) return true;
   try {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    // Verifica se é admin no banco
-    const adminRef = ref(db, `admins/${cred.user.uid}`);
-    const snap = await get(adminRef);
-    if (snap.exists()) {
-      isAdminUser = true;
-      return true;
-    } else {
-      await signOut(auth);
-      return false;
-    }
-  } catch (e) {
-    console.error("Admin login error:", e);
+    return sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
+  } catch {
     return false;
   }
 }
 
-export function logoutAdmin() {
-  signOut(auth);
-  isAdminUser = false;
+export function validateAdmin(user, pass) {
+  return user === ADMIN_USER && pass === ADMIN_PASS;
 }
 
-function setupAuthListener() {
-  onAuthStateChanged(auth, (user) => {
-    if (user) {
-      // Verifica se é admin
-      const adminRef = ref(db, `admins/${user.uid}`);
-      get(adminRef).then(snap => {
-        isAdminUser = snap.exists();
-        authReady = true;
-        startListeners();
-        notifyListeners();
-      });
-    } else {
-      isAdminUser = false;
-      authReady = true;
-      stopListeners();
-      playersCache = {};
-      bannedCache = [];
-      mixesCache = {};
-      notifyListeners();
+export async function loginAdmin(user, pass) {
+  if (validateAdmin(user, pass)) {
+    try {
+      sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+      isAdminUser = true;
+      return true;
+    } catch {
+      return false;
     }
-  });
+  }
+  return false;
 }
 
-// Inicializa listener de auth
-setupAuthListener();
+export function logoutAdmin() {
+  try {
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    isAdminUser = false;
+  } catch {}
+}
 
-// ---- Players Registry (Firebase) ----
+// ---- Players Registry ----
 export function getAllPlayers() {
   const players = [];
   for (const [uid, data] of Object.entries(playersCache)) {
@@ -232,7 +197,6 @@ export function getAllPlayers() {
       });
     }
   }
-  // Ordena por level (maior primeiro)
   players.sort((a, b) => b.level - a.level);
   return players;
 }
@@ -253,12 +217,10 @@ export function checkPassword(nick, pass) {
   return player && player.pass === pass;
 }
 
-// Registra novo nick no Firebase (cria entrada em players)
+// Registra novo nick no Firebase
 export async function registerNick(nick, pass) {
-  // Verifica se já existe
   if (nickExists(nick)) throw new Error("Nick já existe");
 
-  // Cria entrada no Firebase usando UID gerado
   const newRef = push(ref(db, "players"));
   await set(newRef, {
     nick,
@@ -268,7 +230,6 @@ export async function registerNick(nick, pass) {
   });
 }
 
-// Atualiza level do player (apenas admin)
 export async function setPlayerLevel(nick, level) {
   const player = getPlayerByNick(nick);
   if (!player) throw new Error("Player não encontrado");
@@ -278,7 +239,6 @@ export async function setPlayerLevel(nick, level) {
   await update(playerRef, { level: Math.max(1000, Math.min(30000, level)) });
 }
 
-// Reseta senha do player (apenas admin)
 export async function resetPlayerPassword(nick, newPass) {
   const player = getPlayerByNick(nick);
   if (!player) throw new Error("Player não encontrado");
@@ -288,7 +248,7 @@ export async function resetPlayerPassword(nick, newPass) {
   await update(playerRef, { pass: newPass });
 }
 
-// ---- Ban System (Firebase) ----
+// ---- Ban System ----
 export function getBannedNicks() {
   return [...bannedCache];
 }
@@ -313,7 +273,7 @@ export async function unbanNick(nick) {
   await set(ref(db, "banned"), newBanned);
 }
 
-// ---- Mixes (Firebase) ----
+// ---- Mixes ----
 export function getMixes() {
   return { ...mixesCache };
 }
@@ -368,5 +328,5 @@ export function countComplete(dateKey) {
   return Object.values(day.complete).filter(Boolean).length;
 }
 
-// Inicialização: carrega nick local se existir
+// Inicialização
 getNick();

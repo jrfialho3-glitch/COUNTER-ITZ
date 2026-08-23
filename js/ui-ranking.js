@@ -5,8 +5,6 @@ import {
   getAllPlayers,
   setPlayerLevel,
   isAdminLoggedIn,
-  loginAdmin,
-  logoutAdmin,
   getLevelColor,
   formatLevel,
   isBanned,
