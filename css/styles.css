@@ -1061,3 +1061,69 @@ dialog::backdrop {
   font-weight: 500;
   text-transform: none;
 }
+
+/* ============================================
+   Modal "Minha Conta"
+   ============================================ */
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+  flex-wrap: wrap;
+}
+.account-row:last-of-type {
+  border-bottom: none;
+  margin-bottom: 14px;
+}
+.account-row .user-label {
+  min-width: 90px;
+  color: var(--text-dim);
+}
+
+.level-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--text-faint);
+  transition: background 0.2s;
+}
+
+/* Botão verde "CRIAR CONTA" no rodapé do modal de login */
+.btn-create-account {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px 20px;
+  background: var(--green);
+  color: #fff;
+  border: 1px solid var(--green);
+  border-radius: var(--radius-sm);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.05s;
+}
+.btn-create-account:hover { filter: brightness(1.1); }
+.btn-create-account:active { transform: translateY(1px); }
+
+/* Slot preenchido: cor do level do dono */
+.slot.filled,
+.complete-slot.filled {
+  background: var(--slot-color, var(--bg-elev-2));
+  color: var(--slot-color, var(--text));
+  border-color: var(--slot-color, var(--border-strong));
+  font-weight: 700;
+}
+.slot.filled.is-me,
+.complete-slot.filled.is-me {
+  box-shadow: 0 0 0 2px var(--slot-color, var(--blue)), 0 0 14px var(--slot-color, var(--blue));
+}

@@ -4,13 +4,13 @@
 import {
   isLoggedIn, isAuthReady, getPlayer, getEmail, getUid,
   registerUser, loginUser, logoutUser,
-  changeNick,
+  changeNick, setMyLevel,
   getMix, setMixType,
   joinSlot, leaveSlot, joinComplete, leaveComplete,
-  countSlots, countComplete,
+  countSlots, countComplete, getPlayerByNick,
   subscribe
 } from "./identity.js";
-import { getNext10Days, getStatus, escapeHtml } from "./utils.js";
+import { getNext10Days, getStatus, escapeHtml, getLevelColor, formatLevel } from "./utils.js";
 
 // ---- Elementos do DOM ----
 const grid = document.getElementById("mixes-grid");
@@ -31,6 +31,13 @@ const modalRegister = document.getElementById("modal-register");
 const modalLogin = document.getElementById("modal-login");
 const modalSetNick = document.getElementById("modal-setnick");
 const modalType = document.getElementById("modal-type");
+const modalAccount = document.getElementById("modal-account");
+const acctEmail = document.getElementById("acct-email");
+const acctNick = document.getElementById("acct-nick");
+const acctLevel = document.getElementById("acct-level");
+const acctLevelPreview = document.getElementById("acct-level-preview");
+const acctChangeNick = document.getElementById("acct-change-nick");
+const acctLogout = document.getElementById("acct-logout");
 const formRegister = document.getElementById("form-register");
 const formLogin = document.getElementById("form-login");
 const formSetNick = document.getElementById("form-setnick");
@@ -41,7 +48,7 @@ const loginEmail = document.getElementById("login-email");
 const loginPass = document.getElementById("login-pass");
 const newNick = document.getElementById("new-nick");
 const btnShowLogin = document.getElementById("btn-show-login");
-const btnBackRegister = document.getElementById("btn-back-register");
+const btnShowRegister = document.getElementById("btn-show-register");
 const modalTypeDay = document.getElementById("modal-type-day");
 
 const toastArea = document.getElementById("toast-area");
@@ -69,23 +76,38 @@ function renderMixCard(day) {
   const completeCount = countComplete(day.key);
   const me = getPlayer();
   const myNick = me?.nick || "";
+  const myLevel = me?.level || 1000;
+  const myColor = getLevelColor(myLevel);
 
   const typeLabel = data.type === "online" ? "Online" : data.type === "presencial" ? "Presencial" : "Clique para definir";
   const typeIcon = data.type === "online" ? "🌐" : data.type === "presencial" ? "📍" : "❓";
   const typeBadgeClass = data.type === "online" ? "online" : data.type === "presencial" ? "presencial" : "none";
 
+  // Pega a cor do level de quem está no slot pra colorir o quadrado
+  function playerColor(nick) {
+    if (!nick) return null;
+    if (nick === myNick) return myColor;
+    const other = getPlayerByNick(nick);
+    if (other && other.level) return getLevelColor(other.level);
+    return null;
+  }
+
   let slotsHtml = "";
   for (let i = 1; i <= 10; i++) {
     const nick = data.slots?.[i];
     const isMe = nick && nick === myNick;
-    slotsHtml += `<div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}" data-date="${day.key}" data-slot="${i}" title="${nick ? escapeHtml(nick) : `Slot ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
+    const color = playerColor(nick);
+    const style = color ? `style="--slot-color:${color};border-color:${color};color:${color};"` : "";
+    slotsHtml += `<div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}" data-date="${day.key}" data-slot="${i}" ${style} title="${nick ? escapeHtml(nick) + (isMe ? " (tu)" : "") : `Slot ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
   }
 
   let completeHtml = "";
   for (let i = 1; i <= 5; i++) {
     const nick = data.complete?.[i];
     const isMe = nick && nick === myNick;
-    completeHtml += `<div class="complete-slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}" data-date="${day.key}" data-complete="${i}" title="${nick ? escapeHtml(nick) : `Complete ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
+    const color = playerColor(nick);
+    const style = color ? `style="--slot-color:${color};border-color:${color};color:${color};"` : "";
+    completeHtml += `<div class="complete-slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}" data-date="${day.key}" data-complete="${i}" ${style} title="${nick ? escapeHtml(nick) + (isMe ? " (tu)" : "") : `Complete ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
   }
 
   return `
@@ -139,35 +161,111 @@ function renderUserArea() {
   }
 
   if (nickDisplay) nickDisplay.textContent = logged && me ? me.nick : "—";
-  if (changeNickBtn) changeNickBtn.textContent = logged ? "Sair" : "Entrar";
+  if (changeNickBtn) changeNickBtn.textContent = logged ? "Minha Conta" : "Entrar";
 }
 
-// ---- Modal fluxo: abrir modal de registro automaticamente se deslogado ----
-function maybeOpenAuthModal() {
-  if (!isAuthReady()) return; // espera o Firebase Auth inicializar
-  if (!isLoggedIn() && modalRegister && !modalRegister.open) {
-    setTimeout(() => modalRegister.showModal(), 200);
+// Abre modal "Minha Conta" pré-preenchido
+function openAccountModal() {
+  if (!isLoggedIn()) { modalLogin?.showModal(); return; }
+  const me = getPlayer();
+  if (!me) return;
+  if (acctEmail) acctEmail.textContent = me.email || getEmail();
+  if (acctNick) acctNick.textContent = me.nick;
+  // popula o select se ainda não foi populado
+  if (acctLevel && acctLevel.options.length === 0) {
+    for (let v = 1000; v <= 30000; v += 1000) {
+      const opt = document.createElement("option");
+      opt.value = String(v);
+      opt.textContent = `${(v / 1000).toFixed(0)}k`;
+      acctLevel.appendChild(opt);
+    }
   }
+  if (acctLevel) acctLevel.value = String(me.level);
+  updateLevelPreview(me.level);
+  if (acctChangeNick) {
+    acctChangeNick.disabled = !!me.nickChanged;
+    acctChangeNick.textContent = me.nickChanged ? "Nick travado" : "Trocar Nick";
+  }
+  modalAccount?.showModal();
+}
+
+function updateLevelPreview(level) {
+  if (!acctLevelPreview) return;
+  const color = getLevelColor(level);
+  acctLevelPreview.textContent = formatLevel(level);
+  acctLevelPreview.style.background = color;
+  acctLevelPreview.style.color = "#fff";
+}
+
+// ---- Modal fluxo: NÃO abre automaticamente. Usuário clica no botão pra abrir. ----
+function maybeOpenAuthModal() {
+  // No-op: o usuário abre o modal quando quiser, clicando no botão "Entrar" / "Minha Conta" do header.
 }
 
 // ---- Auth (criar / entrar) ----
 function setupAuth() {
-  // Garante que o modal abre quando o site carrega
-  setTimeout(maybeOpenAuthModal, 400);
+  // Não abre modal sozinho — usuário clica no botão.
 
-  // Botão "Entrar" / "Sair" no header
+  // Botão "Entrar" / "Minha Conta" no header
   if (changeNickBtn) {
-    changeNickBtn.addEventListener("click", async () => {
+    changeNickBtn.addEventListener("click", () => {
       if (isLoggedIn()) {
-        if (confirm(`Sair da conta ${getEmail()}?`)) {
-          try { await logoutUser(); toast("Sessão encerrada", "success"); }
-          catch (e) { toast(e.message, "error"); }
-        }
+        openAccountModal();
       } else {
-        modalRegister.showModal();
+        // Abre a caixa de LOGIN primeiro (não mais a de registro)
+        modalLogin?.showModal();
       }
     });
   }
+
+  // Botão "Sair" dentro do modal "Minha Conta"
+  if (acctLogout) {
+    acctLogout.addEventListener("click", async () => {
+      if (!confirm(`Sair da conta ${getEmail()}?`)) return;
+      try {
+        await logoutUser();
+        modalAccount?.close();
+        toast("Sessão encerrada", "success");
+      } catch (e) { toast(e.message, "error"); }
+    });
+  }
+
+  // Botão "Trocar Nick" dentro do modal "Minha Conta"
+  if (acctChangeNick) {
+    acctChangeNick.addEventListener("click", () => {
+      const me = getPlayer();
+      if (!me) return;
+      if (me.nickChanged) {
+        toast("Já trocaste teu nick. Não dá pra trocar de novo.", "error");
+        return;
+      }
+      if (newNick) newNick.value = me.nick;
+      modalAccount?.close();
+      modalSetNick?.showModal();
+    });
+  }
+
+  // Select de level dentro do modal "Minha Conta"
+  if (acctLevel) {
+    acctLevel.addEventListener("change", async () => {
+      const me = getPlayer();
+      if (!me) { toast("Faça login primeiro", "error"); return; }
+      const newLevel = parseInt(acctLevel.value, 10);
+      try {
+        await setMyLevel(newLevel);
+        updateLevelPreview(newLevel);
+        if (levelSelect) levelSelect.value = String(newLevel);
+        toast(`Level atualizado pra ${(newLevel / 1000).toFixed(0)}k!`, "success");
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  }
+
+  // Botão "Fechar" do modal conta (qualquer data-close)
+  modalAccount?.querySelectorAll("[data-close]").forEach((b) => {
+    b.addEventListener("click", () => modalAccount?.close());
+  });
 
   // Botão "Já possuo conta" no modal de registro → abre modal de login
   if (btnShowLogin) {
@@ -177,13 +275,15 @@ function setupAuth() {
     });
   }
 
-  // Botão "← Criar nova conta" no modal de login → volta pro registro
-  if (btnBackRegister) {
-    btnBackRegister.addEventListener("click", () => {
+  // Botão verde "CRIAR CONTA" no rodapé do modal de login → abre modal de registro
+  if (btnShowRegister) {
+    btnShowRegister.addEventListener("click", () => {
       modalLogin.close();
       modalRegister.showModal();
     });
   }
+
+  // (removido btnBackRegister — agora o fluxo é: login → "CRIAR CONTA" verde → registro)
 
   // Submit CRIAR conta
   if (formRegister) {
@@ -292,7 +392,7 @@ function setupTypeModal() {
     if (!badge) return;
     if (!isLoggedIn()) {
       toast("Faça login primeiro", "error");
-      modalRegister?.showModal();
+      modalLogin?.showModal();
       return;
     }
     pendingTypeDate = badge.dataset.date;
@@ -316,11 +416,22 @@ function setupSlotClick() {
 
     if (!isLoggedIn()) {
       toast("Faça login primeiro", "error");
-      modalRegister?.showModal();
+      modalLogin?.showModal();
       return;
     }
-    const me = getPlayer();
-    if (!me) return;
+
+    // Espera o profile ficar pronto (caso o usuário clique rápido após login)
+    let me = getPlayer();
+    let waited = 0;
+    while (!me && waited < 3000) {
+      await new Promise((r) => setTimeout(r, 100));
+      me = getPlayer();
+      waited += 100;
+    }
+    if (!me) {
+      toast("Perfil carregando, tenta de novo em 1 segundo", "error");
+      return;
+    }
     const nick = me.nick;
     if (slot) await handleSlotClick(slot.dataset.date, parseInt(slot.dataset.slot, 10), nick);
     else if (complete) await handleCompleteClick(complete.dataset.date, parseInt(complete.dataset.complete, 10), nick);

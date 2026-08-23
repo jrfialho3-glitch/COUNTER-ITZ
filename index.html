@@ -59,32 +59,10 @@
     <div id="mixes-grid" class="mixes-grid"></div>
   </main>
 
-  <!-- MODAL 1: PRIMEIRA TELA = CRIAR CONTA -->
-  <dialog id="modal-register">
-    <div class="modal">
-      <div class="logo-big">CI</div>
-      <h2>Bem-vindo ao COUNTER-ITZ</h2>
-      <p>Cria tua conta pra jogar nos mixes:</p>
-      <form id="form-register" autocomplete="off">
-        <div class="form-row">
-          <label for="reg-email">Email</label>
-          <input id="reg-email" type="email" placeholder="teuemail@gmail.com" required autocomplete="email" />
-        </div>
-        <div class="form-row">
-          <label for="reg-pass">Senha</label>
-          <input id="reg-pass" type="password" minlength="6" placeholder="Mínimo 6 caracteres" required autocomplete="new-password" />
-        </div>
-        <div class="actions">
-          <button type="submit" class="btn-confirm">CRIAR</button>
-        </div>
-      </form>
-      <button id="btn-show-login" class="btn-ghost" style="width:100%;margin-top:12px;">Já possuo conta</button>
-    </div>
-  </dialog>
-
-  <!-- MODAL 2: LOGIN (conta existente) -->
+  <!-- MODAL 1: LOGIN (primeiro que aparece quando clica em Entrar) -->
   <dialog id="modal-login">
     <div class="modal">
+      <div class="logo-big">CI</div>
       <h2>Entrar na conta</h2>
       <p>Digita teu email e senha:</p>
       <form id="form-login" autocomplete="off">
@@ -100,7 +78,31 @@
           <button type="submit" class="btn-confirm">ENTRAR</button>
         </div>
       </form>
-      <button id="btn-back-register" class="btn-ghost" style="width:100%;margin-top:12px;">← Criar nova conta</button>
+      <!-- Botão verde de criar conta no rodapé -->
+      <button id="btn-show-register" class="btn-create-account" type="button">CRIAR CONTA</button>
+    </div>
+  </dialog>
+
+  <!-- MODAL 2: CRIAR CONTA -->
+  <dialog id="modal-register">
+    <div class="modal">
+      <div class="logo-big">CI</div>
+      <h2>Criar nova conta</h2>
+      <p>Cria tua conta pra jogar nos mixes:</p>
+      <form id="form-register" autocomplete="off">
+        <div class="form-row">
+          <label for="reg-email">Email</label>
+          <input id="reg-email" type="email" placeholder="teuemail@gmail.com" required autocomplete="email" />
+        </div>
+        <div class="form-row">
+          <label for="reg-pass">Senha</label>
+          <input id="reg-pass" type="password" minlength="6" placeholder="Mínimo 6 caracteres" required autocomplete="new-password" />
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn-confirm">CRIAR</button>
+        </div>
+      </form>
+      <button id="btn-show-login" class="btn-ghost" style="width:100%;margin-top:12px;">Já possuo conta</button>
     </div>
   </dialog>
 
@@ -120,6 +122,31 @@
           <button type="submit" class="btn-confirm">Salvar</button>
         </div>
       </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL 5: MINHA CONTA (level + ações) -->
+  <dialog id="modal-account">
+    <div class="modal">
+      <h2>Minha Conta</h2>
+      <div class="account-row">
+        <span class="user-label">Email:</span>
+        <strong id="acct-email"></strong>
+      </div>
+      <div class="account-row">
+        <span class="user-label">Nick atual:</span>
+        <strong id="acct-nick"></strong>
+      </div>
+      <div class="account-row">
+        <label class="user-label" for="acct-level">Teu level:</label>
+        <select id="acct-level" class="user-level-select"></select>
+        <span id="acct-level-preview" class="level-chip"></span>
+      </div>
+      <div class="actions" style="flex-direction:column;gap:8px;">
+        <button id="acct-change-nick" class="btn-primary" type="button">Trocar Nick</button>
+        <button id="acct-logout" class="btn-ghost" type="button">Sair da conta</button>
+        <button data-close class="btn-ghost" type="button">Fechar</button>
+      </div>
     </div>
   </dialog>
 
