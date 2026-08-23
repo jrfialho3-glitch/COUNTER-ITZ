@@ -1,0 +1,28 @@
+{
+  "name": "counter-itz",
+  "version": "1.0.0",
+  "description": "COUNTER-ITZ - Sistema de agendamento de mixes",
+  "main": "index.js",
+  "scripts": {
+    "build": "esbuild js/speed-insights.js --bundle --format=esm --outfile=js/speed-insights.bundle.js",
+    "build:watch": "npm run build -- --watch",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jrfialho3-glitch/COUNTER-ITZ.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jrfialho3-glitch/COUNTER-ITZ/issues"
+  },
+  "homepage": "https://github.com/jrfialho3-glitch/COUNTER-ITZ#readme",
+  "dependencies": {
+    "@vercel/speed-insights": "^2.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
