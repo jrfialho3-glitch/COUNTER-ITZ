@@ -1,5 +1,5 @@
 // js/firebase-config.js
-// Inicializa o Firebase (Auth para admin + Realtime Database)
+// Inicializa o Firebase (Auth + Realtime Database)
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
@@ -22,15 +22,20 @@ export const auth = getAuth(app);
 // ============================================
 // FIREBASE REALTIME DATABASE SECURITY RULES
 // ============================================
-// Cole estas regras no Firebase Console → Realtime Database → Rules → Publish
+// Firebase Console → Realtime Database → Rules → Publish
 /*
 {
   "rules": {
-    "mixes": { ".read": true, ".write": true },
-    "players": { ".read": true, ".write": true },
-    "banned": { ".read": true, ".write": true },
-    "meta": { ".read": true, ".write": true }
+    "mixes": { ".read": true, ".write": "auth != null" },
+    "players": {
+      ".read": true,
+      "$uid": { ".write": "auth != null && auth.uid === $uid" }
+    },
+    "banned": { ".read": true, ".write": "auth != null && root.child('admins').child(auth.uid).exists()" },
+    "admins": { ".read": "auth != null", ".write": false },
+    "meta": { ".read": true, ".write": "auth != null && root.child('admins').child(auth.uid).exists()" }
   }
 }
 */
-// Admin login: posseydom@gmail.com / manu123@ (Firebase Authentication)
+// Admin: posseydom@gmail.com / manu123@ (create in Firebase Auth → Users)
+// After creating admin user, add their UID to /admins/{uid} = true in Database

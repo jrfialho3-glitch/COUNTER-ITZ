@@ -20,7 +20,7 @@
     </div>
     <div class="who">
       <span>Jogando como <strong id="current-nick">—</strong></span>
-      <button id="change-nick" class="btn-ghost" type="button">Trocar</button>
+      <button id="change-nick" class="btn-ghost" type="button">Entrar</button>
     </div>
     <a href="ranking.html" class="btn-ghost">🏆 Ranking</a>
     <a href="historico.html" class="btn-ghost">Histórico</a>
@@ -34,24 +34,48 @@
     <div id="mixes-grid" class="mixes-grid"></div>
   </main>
 
-  <!-- Modal de nick (primeira visita) -->
+  <!-- Modal de auth (criar conta / login) -->
   <dialog id="modal-nick">
     <div class="modal modal-nick">
       <div class="logo-big">CI</div>
       <h2>Bem-vindo ao COUNTER-ITZ</h2>
-      <p>Digita teu nick pra entrar nos mixes:</p>
-      <form id="form-nick">
+      <p>Cria uma conta pra jogar nos mixes:</p>
+      <form id="form-register" style="display: block;">
         <div class="form-row">
-          <input id="input-nick" type="text" maxlength="24" placeholder="Teu nick" required autocomplete="off" />
+          <input id="reg-nick" type="text" maxlength="24" placeholder="Teu nick" required autocomplete="off" />
         </div>
         <div class="form-row">
-          <input id="input-pass" type="password" maxlength="4" pattern="\d{4}" placeholder="Senha de 4 números" required autocomplete="new-password" />
-          <small class="pass-hint">Se o nick já existe: digita tua senha. Se é novo: cria uma senha de 4 números.</small>
+          <input id="reg-email" type="email" placeholder="Email" required autocomplete="email" />
+        </div>
+        <div class="form-row">
+          <input id="reg-pass" type="password" minlength="6" placeholder="Senha (mín. 6 caracteres)" required autocomplete="new-password" />
         </div>
         <div class="actions">
-          <button type="submit" class="btn-confirm" id="btn-save-nick">Entrar</button>
+          <button type="submit" class="btn-confirm">CRIAR</button>
         </div>
       </form>
+
+      <button id="btn-show-login" class="btn-ghost" style="width: 100%; margin-top: 12px;">Já possuo conta</button>
+    </div>
+  </dialog>
+
+  <!-- Modal de login (conta existente) -->
+  <dialog id="modal-login">
+    <div class="modal">
+      <h2>Entrar na conta</h2>
+      <p>Acesse com teu email e senha:</p>
+      <form id="form-login">
+        <div class="form-row">
+          <input id="login-email" type="email" placeholder="Email" required autocomplete="email" />
+        </div>
+        <div class="form-row">
+          <input id="login-pass" type="password" placeholder="Senha" required autocomplete="current-password" />
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn-confirm">ENTRAR</button>
+        </div>
+      </form>
+      <button id="btn-back-register" class="btn-ghost" style="width: 100%; margin-top: 12px;">← Criar nova conta</button>
     </div>
   </dialog>
 
@@ -75,11 +99,11 @@
     </div>
   </dialog>
 
-  <!-- Modal Admin -->
+  <!-- Modal Admin (mesmo email/senha do admin) -->
   <dialog id="modal-admin">
     <div class="modal modal-admin">
       <h2>🔐 Área Admin</h2>
-      <p>Faça login para acessar os controles de admin.</p>
+      <p>Login de admin (email/senha):</p>
       <form id="form-admin">
         <div class="form-row">
           <label for="admin-email">Email</label>
@@ -103,17 +127,6 @@
         <div class="actions" style="margin-top: 8px;">
           <button type="button" id="btn-ban" class="btn-danger">Banir</button>
           <button type="button" id="btn-unban" class="btn-primary">Desbanir</button>
-        </div>
-
-        <h3 style="margin-top: 20px;">🔑 Resetar Senha de Player</h3>
-        <div class="form-row">
-          <input id="reset-nick" type="text" placeholder="Nick do player" autocomplete="off" />
-        </div>
-        <div class="form-row">
-          <input id="reset-pass" type="text" maxlength="4" pattern="\d{4}" placeholder="Nova senha (4 números)" />
-        </div>
-        <div class="actions" style="margin-top: 8px;">
-          <button type="button" id="btn-reset" class="btn-primary">Resetar Senha</button>
         </div>
 
         <h3 style="margin-top: 20px;">📋 Nicks Banidos</h3>

@@ -1,44 +1,30 @@
 // js/ui-home.js
-// Render da home: 10 cards de mix, botão copiar, modal de nick com senha, área admin.
-// USA FIREBASE REALTIME DATABASE - SINCRONISMO EM TEMPO REAL
+// Render da home - Firebase Auth + RTDB
 
 import {
-  getNick,
-  setNick,
-  setPass,
-  nickExists,
-  checkPassword,
-  registerNick,
-  isBanned,
-  isAdminLoggedIn,
-  loginAdmin,
-  logoutAdmin,
-  getBannedNicks,
-  banNick,
-  unbanNick,
-  resetPlayerPassword,
-  getAllPlayers,
-  setPlayerLevel,
-  getLevelColor,
-  formatLevel,
-  getMix,
-  setMixType,
-  joinSlot,
-  leaveSlot,
-  joinComplete,
-  leaveComplete,
-  countSlots,
-  countComplete,
-  subscribe
+  getNick, setNick, clearSession,
+  isBanned, isAdminLoggedIn, loginUser, registerUser, logoutUser,
+  getBannedNicks, banNick, unbanNick,
+  getAllPlayers, setPlayerLevel, getLevelColor, formatLevel,
+  getMix, setMixType,
+  joinSlot, leaveSlot, joinComplete, leaveComplete,
+  countSlots, countComplete,
+  subscribe, auth
 } from "./identity.js";
 import { getNext10Days, getStatus, sanitizeNick, escapeHtml } from "./utils.js";
 
-// Referências DOM
 const grid = document.getElementById("mixes-grid");
 const modalNick = document.getElementById("modal-nick");
-const formNick = document.getElementById("form-nick");
-const inputNick = document.getElementById("input-nick");
-const inputPass = document.getElementById("input-pass");
+const modalLogin = document.getElementById("modal-login");
+const formRegister = document.getElementById("form-register");
+const formLogin = document.getElementById("form-login");
+const regNick = document.getElementById("reg-nick");
+const regEmail = document.getElementById("reg-email");
+const regPass = document.getElementById("reg-pass");
+const loginEmail = document.getElementById("login-email");
+const loginPass = document.getElementById("login-pass");
+const btnShowLogin = document.getElementById("btn-show-login");
+const btnBackRegister = document.getElementById("btn-back-register");
 const nickDisplay = document.getElementById("current-nick");
 const changeNickBtn = document.getElementById("change-nick");
 const modalType = document.getElementById("modal-type");
@@ -47,10 +33,8 @@ const modalTypeDay = document.getElementById("modal-type-day");
 const toastArea = document.getElementById("toast-area");
 const adminBtn = document.getElementById("admin-btn");
 
-// Estado local
 let pendingTypeDate = null;
 
-// Re-render quando dados mudam
 subscribe(() => render());
 
 function toast(msg, kind = "") {
@@ -59,22 +43,16 @@ function toast(msg, kind = "") {
   el.className = `toast ${kind}`;
   el.textContent = msg;
   toastArea.appendChild(el);
-  setTimeout(() => {
-    el.style.transition = "opacity .2s";
-    el.style.opacity = "0";
-    setTimeout(() => el.remove(), 200);
-  }, 2200);
+  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); }, 2200);
 }
 
-// Renderiza card
 function renderMixCard(day) {
   const data = getMix(day.key);
   const count = countSlots(day.key);
   const status = getStatus(count);
   const completeCount = countComplete(day.key);
 
-  const typeLabel =
-    data.type === "online" ? "Online" : data.type === "presencial" ? "Presencial" : "Clique para definir";
+  const typeLabel = data.type === "online" ? "Online" : data.type === "presencial" ? "Presencial" : "Clique para definir";
   const typeIcon = data.type === "online" ? "🌐" : data.type === "presencial" ? "📍" : "❓";
   const typeBadgeClass = data.type === "online" ? "online" : data.type === "presencial" ? "presencial" : "none";
 
@@ -83,24 +61,14 @@ function renderMixCard(day) {
     const nick = data.slots?.[i];
     const isMe = nick && nick === getNick();
     const isBannedUser = nick && isBanned(nick);
-    slotsHtml += `
-      <div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""} ${isBannedUser ? "banned" : ""}"
-           data-date="${day.key}" data-slot="${i}" title="${nick ? escapeHtml(nick) : `Slot ${i}`}">
-        ${nick ? escapeHtml(nick) : i}
-      </div>
-    `;
+    slotsHtml += `<div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""} ${isBannedUser ? "banned" : ""}" data-date="${day.key}" data-slot="${i}" title="${nick ? escapeHtml(nick) : `Slot ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
   }
 
   let completeHtml = "";
   for (let i = 1; i <= 5; i++) {
     const nick = data.complete?.[i];
     const isMe = nick && nick === getNick();
-    completeHtml += `
-      <div class="complete-slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}"
-           data-date="${day.key}" data-complete="${i}" title="${nick ? escapeHtml(nick) : `Complete ${i}`}">
-        ${nick ? escapeHtml(nick) : i}
-      </div>
-    `;
+    completeHtml += `<div class="complete-slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}" data-date="${day.key}" data-complete="${i}" title="${nick ? escapeHtml(nick) : `Complete ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
   }
 
   return `
@@ -109,21 +77,15 @@ function renderMixCard(day) {
         <div class="mix-day-name">${escapeHtml(day.dayName)}</div>
         <div class="mix-date">${escapeHtml(day.dateBR)}${day.isToday ? " • HOJE" : ""}</div>
       </header>
-
-      <div class="mix-type-badge ${typeBadgeClass}" data-action="set-type" data-date="${day.key}">
-        ${typeIcon} ${typeLabel}
-      </div>
-
+      <div class="mix-type-badge ${typeBadgeClass}" data-action="set-type" data-date="${day.key}">${typeIcon} ${typeLabel}</div>
       <section class="slots-section">
         <div class="slots-label">SLOTS (${count}/10)</div>
         <div class="slots-grid">${slotsHtml}</div>
       </section>
-
       <section class="complete-section">
         <div class="complete-label">COMPLETE <span>(${completeCount}/5)</span> — em dúvida</div>
         <div class="complete-grid">${completeHtml}</div>
       </section>
-
       <div class="mix-actions-row">
         <button class="btn-copy" data-action="copy" data-date="${day.key}" title="Copiar lista">📋 Copiar</button>
         <div class="mix-counter status-${status.id}">${count}/10 — ${status.label}</div>
@@ -134,109 +96,118 @@ function renderMixCard(day) {
 
 function render() {
   if (!grid) return;
-  const days = getNext10Days();
-  grid.innerHTML = days.map(renderMixCard).join("");
-  updateNickDisplay();
+  grid.innerHTML = getNext10Days().map(renderMixCard).join("");
+  updateUI();
 }
 
-// Modal de nick com senha
-function setupNickModal() {
-  const nick = getNick();
+function updateUI() {
+  if (!auth?.currentUser) {
+    if (nickDisplay) nickDisplay.textContent = "—";
+    if (changeNickBtn) changeNickBtn.textContent = "Entrar";
+  } else {
+    if (nickDisplay) nickDisplay.textContent = getNick() || "—";
+    if (changeNickBtn) changeNickBtn.textContent = "Sair";
+  }
+}
 
-  if (!nick && modalNick) {
-    modalNick.showModal();
+// ---- Auth modals ----
+function setupAuth() {
+  // Show register modal if not logged in
+  if (!auth?.currentUser) {
+    setTimeout(() => modalNick?.showModal(), 300);
+  } else {
+    updateUI();
   }
 
+  // Botão ao lado de "Jogando como" → Entrar / Sair
   if (changeNickBtn) {
-    changeNickBtn.addEventListener("click", () => {
-      if (inputNick) inputNick.value = "";
-      if (inputPass) inputPass.value = "";
-      if (modalNick) modalNick.showModal();
+    changeNickBtn.addEventListener("click", async () => {
+      if (auth?.currentUser) {
+        if (confirm(`Sair da conta ${getNick()}?`)) {
+          await logoutUser();
+          toast("Você saiu", "success");
+          updateUI();
+          modalNick.showModal();
+        }
+      } else {
+        modalNick.showModal();
+      }
     });
   }
 
-  if (formNick) {
-    formNick.addEventListener("submit", async (e) => {
+  // Já possuo conta → abre modal login
+  if (btnShowLogin) {
+    btnShowLogin.addEventListener("click", () => {
+      modalNick.close();
+      modalLogin.showModal();
+    });
+  }
+
+  // Voltar para criar conta
+  if (btnBackRegister) {
+    btnBackRegister.addEventListener("click", () => {
+      modalLogin.close();
+      modalNick.showModal();
+    });
+  }
+
+  // CRIAR conta
+  if (formRegister) {
+    formRegister.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const nickVal = sanitizeNick(inputNick.value);
-      const passVal = inputPass ? inputPass.value.trim() : "";
+      const nick = sanitizeNick(regNick.value);
+      const email = regEmail.value.trim();
+      const pass = regPass.value;
 
-      if (nickVal.length < 2) {
-        inputNick.setCustomValidity("Mínimo 2 caracteres");
-        inputNick.reportValidity();
-        return;
-      }
-
-      if (isBanned(nickVal)) {
-        toast("Esse nick está banido", "error");
-        return;
-      }
-
-      // Verifica se nick já existe
-      if (nickExists(nickVal)) {
-        // Precisa da senha correta
-        if (!passVal || passVal.length !== 4 || !/^\d{4}$/.test(passVal)) {
-          inputPass.setCustomValidity("Digite a senha de 4 números");
-          inputPass.reportValidity();
-          return;
-        }
-        if (!checkPassword(nickVal, passVal)) {
-          inputPass.setCustomValidity("Senha incorreta");
-          inputPass.reportValidity();
-          return;
-        }
-        // Senha correta - loga
-        setNick(nickVal);
-        setPass(passVal);
-        updateNickDisplay();
-        if (modalNick) modalNick.close();
-        toast("Bem-vindo de volta!", "success");
-        return;
-      }
-
-      // Novo nick - precisa criar senha de 4 números
-      if (!passVal || passVal.length !== 4 || !/^\d{4}$/.test(passVal)) {
-        inputPass.setCustomValidity("Crie uma senha de 4 números");
-        inputPass.reportValidity();
-        return;
-      }
+      if (nick.length < 2) { toast("Nick: mínimo 2 caracteres", "error"); return; }
+      if (pass.length < 6) { toast("Senha: mínimo 6 caracteres", "error"); return; }
 
       try {
-        await registerNick(nickVal, passVal);
-        setNick(nickVal);
-        setPass(passVal);
-        updateNickDisplay();
-        if (modalNick) modalNick.close();
-        toast("Nick registrado!", "success");
+        await registerUser(email, pass, nick);
+        setNick(nick);
+        modalNick.close();
+        toast("Conta criada! Bem-vindo!", "success");
+        updateUI();
+        render();
       } catch (err) {
-        toast(err.message, "error");
+        console.error(err);
+        toast(err.message.replace("Firebase: ", ""), "error");
+      }
+    });
+  }
+
+  // ENTRAR na conta existente
+  if (formLogin) {
+    formLogin.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = loginEmail.value.trim();
+      const pass = loginPass.value;
+
+      try {
+        await loginUser(email, pass);
+        modalLogin.close();
+        toast("Login realizado!", "success");
+        updateUI();
+        render();
+      } catch (err) {
+        console.error(err);
+        toast(err.message.replace("Firebase: ", ""), "error");
       }
     });
   }
 }
 
-function updateNickDisplay() {
-  if (nickDisplay) {
-    nickDisplay.textContent = getNick() || "—";
-  }
-}
-
-// Modal de tipo (online/presencial)
+// ---- Type modal ----
 function setupTypeModal() {
   const cancelBtn = modalType?.querySelector("[data-close]");
-
-  if (cancelBtn) {
-    cancelBtn.addEventListener("click", () => modalType?.close());
-  }
+  if (cancelBtn) cancelBtn.addEventListener("click", () => modalType?.close());
 
   if (formType) {
     formType.addEventListener("submit", async (e) => {
       e.preventDefault();
       if (!pendingTypeDate) return;
-
       const fd = new FormData(formType);
       const type = fd.get("mix-type");
-
       try {
         await setMixType(pendingTypeDate, type);
         toast(`Mix definido como ${type}!`, "success");
@@ -251,76 +222,52 @@ function setupTypeModal() {
     const badge = e.target.closest('[data-action="set-type"]');
     if (!badge) return;
 
-    pendingTypeDate = badge.dataset.date;
-    const day = getNext10Days().find((d) => d.key === pendingTypeDate);
-
-    if (modalTypeDay) {
-      modalTypeDay.textContent = day ? `${day.dayLong} (${day.dateBR})` : pendingTypeDate;
+    if (!auth?.currentUser) {
+      toast("Faça login primeiro!", "error");
+      modalNick?.showModal();
+      return;
     }
 
+    pendingTypeDate = badge.dataset.date;
+    const day = getNext10Days().find((d) => d.key === pendingTypeDate);
+    if (modalTypeDay) modalTypeDay.textContent = day ? `${day.dayLong} (${day.dateBR})` : pendingTypeDate;
     const currentType = getMix(pendingTypeDate)?.type || "online";
-    formType?.querySelectorAll('input[name="mix-type"]').forEach((r) => {
-      r.checked = r.value === currentType;
-    });
-
+    formType?.querySelectorAll('input[name="mix-type"]').forEach((r) => { r.checked = r.value === currentType; });
     modalType?.showModal();
   });
 }
 
-// Clique em slot/complete/copiar
+// ---- Slot / complete / copy ----
 function setupSlotClick() {
   document.addEventListener("click", async (e) => {
     const slot = e.target.closest(".slot");
     const complete = e.target.closest(".complete-slot");
     const copyBtn = e.target.closest('[data-action="copy"]');
 
-    if (copyBtn) {
-      const dateKey = copyBtn.dataset.date;
-      copyListToClipboard(dateKey);
-      return;
-    }
-
+    if (copyBtn) { copyListToClipboard(copyBtn.dataset.date); return; }
     if (!slot && !complete) return;
 
-    const nick = getNick();
-    if (!nick) {
-      toast("Define teu nick primeiro!", "error");
+    if (!auth?.currentUser) {
+      toast("Faça login primeiro!", "error");
       modalNick?.showModal();
       return;
     }
 
-    if (slot) {
-      const dateKey = slot.dataset.date;
-      const slotNum = parseInt(slot.dataset.slot, 10);
-      await handleSlotClick(dateKey, slotNum, nick);
-    } else if (complete) {
-      const dateKey = complete.dataset.date;
-      const compNum = parseInt(complete.dataset.complete, 10);
-      await handleCompleteClick(dateKey, compNum, nick);
-    }
+    const nick = getNick();
+    if (slot) await handleSlotClick(slot.dataset.date, parseInt(slot.dataset.slot, 10), nick);
+    else if (complete) await handleCompleteClick(complete.dataset.date, parseInt(complete.dataset.complete, 10), nick);
   });
 }
 
 async function handleSlotClick(dateKey, slotNum, nick) {
   const current = getMix(dateKey).slots?.[slotNum];
-
   if (current === nick) {
     await leaveSlot(dateKey, slotNum, nick);
     toast("Você saiu do slot", "success");
   } else if (!current) {
-    // Remove de outros slots/complete do mesmo dia
     const dayData = getMix(dateKey);
-    if (dayData.slots) {
-      for (const [k, n] of Object.entries(dayData.slots)) {
-        if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
-      }
-    }
-    if (dayData.complete) {
-      for (const [k, n] of Object.entries(dayData.complete)) {
-        if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
-      }
-    }
-
+    if (dayData.slots) for (const [k, n] of Object.entries(dayData.slots)) if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
+    if (dayData.complete) for (const [k, n] of Object.entries(dayData.complete)) if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
     await joinSlot(dateKey, slotNum, nick);
     toast(`Slot ${slotNum} reservado!`, "success");
   } else {
@@ -330,24 +277,13 @@ async function handleSlotClick(dateKey, slotNum, nick) {
 
 async function handleCompleteClick(dateKey, compNum, nick) {
   const current = getMix(dateKey).complete?.[compNum];
-
   if (current === nick) {
     await leaveComplete(dateKey, compNum, nick);
     toast("Você saiu do complete", "success");
   } else if (!current) {
-    // Remove de outros lugares
     const dayData = getMix(dateKey);
-    if (dayData.slots) {
-      for (const [k, n] of Object.entries(dayData.slots)) {
-        if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
-      }
-    }
-    if (dayData.complete) {
-      for (const [k, n] of Object.entries(dayData.complete)) {
-        if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
-      }
-    }
-
+    if (dayData.slots) for (const [k, n] of Object.entries(dayData.slots)) if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
+    if (dayData.complete) for (const [k, n] of Object.entries(dayData.complete)) if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
     await joinComplete(dateKey, compNum, nick);
     toast(`Complete ${compNum} reservado!`, "success");
   } else {
@@ -355,37 +291,21 @@ async function handleCompleteClick(dateKey, compNum, nick) {
   }
 }
 
-// Copiar lista para WhatsApp
 function copyListToClipboard(dateKey) {
   const data = getMix(dateKey);
   const day = getNext10Days().find((d) => d.key === dateKey);
   const typeLabel = data.type === "online" ? "ONLINE" : data.type === "presencial" ? "PRESENCIAL" : "A DEFINIR";
-
   let text = `MIX ${day.dayName} ${day.dateBR} ${typeLabel}\n`;
-
-  for (let i = 1; i <= 10; i++) {
-    const nick = data.slots?.[i];
-    text += `${i} ${nick || ""}\n`;
+  for (let i = 1; i <= 10; i++) text += `${i} ${data.slots?.[i] || ""}\n`;
+  if (countComplete(dateKey) > 0) {
+    text += "\nCOMPLETE:\n";
+    for (let i = 1; i <= 5; i++) { if (data.complete?.[i]) text += `${i} ${data.complete[i]}\n`; }
   }
-
-  const completeCount = countComplete(dateKey);
-  if (completeCount > 0) {
-    text += `\nCOMPLETE:\n`;
-    for (let i = 1; i <= 5; i++) {
-      const nick = data.complete?.[i];
-      if (nick) text += `${i} ${nick}\n`;
-    }
-  }
-
-  navigator.clipboard.writeText(text.trim()).then(() => {
-    toast("Lista copiada!", "success");
-  }).catch(() => {
-    toast("Erro ao copiar", "error");
-  });
+  navigator.clipboard.writeText(text.trim()).then(() => toast("Lista copiada!", "success")).catch(() => toast("Erro ao copiar", "error"));
 }
 
-// Modal Admin
-function setupAdminModal() {
+// ---- Admin modal ----
+function setupAdmin() {
   const modalAdmin = document.getElementById("modal-admin");
   const formAdmin = document.getElementById("form-admin");
   const adminEmail = document.getElementById("admin-email");
@@ -394,15 +314,11 @@ function setupAdminModal() {
   const banInput = document.getElementById("ban-nick");
   const btnBan = document.getElementById("btn-ban");
   const btnUnban = document.getElementById("btn-unban");
-  const resetInput = document.getElementById("reset-nick");
-  const resetPassInput = document.getElementById("reset-pass");
-  const btnReset = document.getElementById("btn-reset");
   const bannedList = document.getElementById("banned-list");
   const cancelBtn = modalAdmin?.querySelector("[data-close]");
 
   if (!modalAdmin || !adminBtn) return;
 
-  // Abrir modal admin
   adminBtn.addEventListener("click", () => {
     if (isAdminLoggedIn()) {
       showAdminPanel();
@@ -414,24 +330,25 @@ function setupAdminModal() {
     }
   });
 
-  // Fechar modal
-  if (cancelBtn) {
-    cancelBtn.addEventListener("click", () => modalAdmin.close());
-  }
+  if (cancelBtn) cancelBtn.addEventListener("click", () => modalAdmin.close());
 
-  // Login admin (posseydom@gmail.com / manu123@)
   if (formAdmin) {
     formAdmin.addEventListener("submit", async (e) => {
       e.preventDefault();
       const email = adminEmail?.value.trim();
       const pass = adminPass?.value;
-
-      const success = await loginAdmin(email, pass);
-      if (success) {
-        toast("Login admin realizado!", "success");
-        showAdminPanel();
-      } else {
-        toast("Email ou senha incorretos", "error");
+      try {
+        await loginUser(email, pass);
+        // Espera onAuthStateChanged setar isAdminUser
+        await new Promise(r => setTimeout(r, 500));
+        if (isAdminLoggedIn()) {
+          toast("Login admin realizado!", "success");
+          showAdminPanel();
+        } else {
+          toast("Este email não é admin", "error");
+        }
+      } catch (err) {
+        toast(err.message.replace("Firebase: ", ""), "error");
       }
     });
   }
@@ -446,112 +363,42 @@ function setupAdminModal() {
   function renderBannedList() {
     if (!bannedList) return;
     const banned = getBannedNicks();
-    if (banned.length === 0) {
-      bannedList.innerHTML = '<li style="color: var(--text-faint);">Nenhum nick banido</li>';
-      return;
-    }
-    bannedList.innerHTML = banned
-      .map(
-        (nick) => `
-      <li>
-        <span>${escapeHtml(nick)}</span>
-        <button class="unban-btn" data-unban="${escapeHtml(nick)}">Desbanir</button>
-      </li>
-    `
-      )
-      .join("");
+    if (banned.length === 0) { bannedList.innerHTML = '<li style="color: var(--text-faint);">Nenhum nick banido</li>'; return; }
+    bannedList.innerHTML = banned.map((nick) => `<li><span>${escapeHtml(nick)}</span><button class="unban-btn" data-unban="${escapeHtml(nick)}">Desbanir</button></li>`).join("");
   }
 
-  // Banir nick
-  if (btnBan) {
-    btnBan.addEventListener("click", async () => {
-      const nick = sanitizeNick(banInput?.value);
-      if (!nick) {
-        toast("Digite um nick", "error");
-        return;
-      }
-      try {
-        await banNick(nick);
-        toast(`${nick} foi banido!`, "success");
-        renderBannedList();
-      } catch (err) {
-        toast(err.message, "error");
-      }
-      if (banInput) banInput.value = "";
-    });
-  }
+  if (btnBan) btnBan.addEventListener("click", async () => {
+    const nick = sanitizeNick(banInput?.value);
+    if (!nick) { toast("Digite um nick", "error"); return; }
+    try { await banNick(nick); toast(`${nick} banido!`, "success"); renderBannedList(); }
+    catch (err) { toast(err.message, "error"); }
+    if (banInput) banInput.value = "";
+  });
 
-  // Desbanir nick
-  if (btnUnban) {
-    btnUnban.addEventListener("click", async () => {
-      const nick = sanitizeNick(banInput?.value);
-      if (!nick) {
-        toast("Digite um nick", "error");
-        return;
-      }
-      try {
-        await unbanNick(nick);
-        toast(`${nick} foi desbanido!`, "success");
-        renderBannedList();
-      } catch (err) {
-        toast(err.message, "error");
-      }
-      if (banInput) banInput.value = "";
-    });
-  }
+  if (btnUnban) btnUnban.addEventListener("click", async () => {
+    const nick = sanitizeNick(banInput?.value);
+    if (!nick) { toast("Digite um nick", "error"); return; }
+    try { await unbanNick(nick); toast(`${nick} desbanido!`, "success"); renderBannedList(); }
+    catch (err) { toast(err.message, "error"); }
+    if (banInput) banInput.value = "";
+  });
 
-  // Resetar senha
-  if (btnReset) {
-    btnReset.addEventListener("click", async () => {
-      const nick = sanitizeNick(resetInput?.value);
-      const newPass = resetPassInput?.value.trim();
-
-      if (!nick) {
-        toast("Digite um nick", "error");
-        return;
-      }
-      if (!newPass || newPass.length !== 4 || !/^\d{4}$/.test(newPass)) {
-        toast("Senha deve ter 4 números", "error");
-        return;
-      }
-
-      try {
-        await resetPlayerPassword(nick, newPass);
-        toast(`Senha de ${nick} resetada!`, "success");
-      } catch (err) {
-        toast(err.message, "error");
-      }
-      if (resetInput) resetInput.value = "";
-      if (resetPassInput) resetPassInput.value = "";
-    });
-  }
-
-  // Desbanir pelo botão na lista
   document.addEventListener("click", async (e) => {
     const unbanBtn = e.target.closest("[data-unban]");
     if (!unbanBtn) return;
-    const nick = unbanBtn.dataset.unban;
-    try {
-      await unbanNick(nick);
-      toast(`${nick} foi desbanido!`, "success");
-      renderBannedList();
-    } catch (err) {
-      toast(err.message, "error");
-    }
+    try { await unbanNick(unbanBtn.dataset.unban); toast("Desbanido!", "success"); renderBannedList(); }
+    catch (err) { toast(err.message, "error"); }
   });
 }
 
-// Inicialização
 function boot() {
-  render();
-  setupNickModal();
+  setupAuth();
   setupTypeModal();
   setupSlotClick();
-  setupAdminModal();
+  setupAdmin();
+  // Aguarda um momento para o Firebase Auth inicializar
+  setTimeout(render, 200);
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", boot);
-} else {
-  boot();
-}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+else boot();
