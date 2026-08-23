@@ -504,7 +504,6 @@ function setupLevelSelect() {
     if (!me) { toast("Faça login primeiro", "error"); return; }
     const newLevel = parseInt(levelSelect.value, 10);
     try {
-      const { setMyLevel } = await import("./identity.js");
       await setMyLevel(newLevel);
       toast(`Level atualizado pra ${(newLevel / 1000).toFixed(0)}k!`, "success");
     } catch (err) {

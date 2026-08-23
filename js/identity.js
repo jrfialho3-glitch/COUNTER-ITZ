@@ -345,19 +345,17 @@ onAuthStateChanged(auth, async (user) => {
   currentUid = user ? user.uid : null;
   authReady = true;
 
+  // Listeners RTDB rodam SEMPRE (logado ou não) — assim visitantes veem os mixes
+  startListeners();
+
   if (user) {
     try {
       await ensurePlayerProfile(user);
-      startListeners();
     } catch (e) {
       console.error("Erro ao carregar perfil:", e);
     }
   } else {
     playerData = null;
-    playersCache = {};
-    bannedCache = [];
-    mixesCache = {};
-    listenersReady = false;
   }
   notify();
 });
