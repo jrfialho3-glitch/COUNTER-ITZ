@@ -1,56 +1,74 @@
 // js/ui-home.js
-// Render da home - Firebase Auth + RTDB
+// Render da home — fluxo de auth + área do usuário + mixes em tempo real.
 
 import {
-  getNick, setNick, clearSession,
-  isBanned, isAdminLoggedIn, loginUser, registerUser, logoutUser,
-  getBannedNicks, banNick, unbanNick,
-  getAllPlayers, setPlayerLevel, getLevelColor, formatLevel,
+  isLoggedIn, isAuthReady, getPlayer, getEmail, getUid,
+  registerUser, loginUser, logoutUser,
+  changeNick,
   getMix, setMixType,
   joinSlot, leaveSlot, joinComplete, leaveComplete,
   countSlots, countComplete,
-  subscribe, auth
+  subscribe
 } from "./identity.js";
-import { getNext10Days, getStatus, sanitizeNick, escapeHtml } from "./utils.js";
+import { getNext10Days, getStatus, escapeHtml } from "./utils.js";
 
+// ---- Elementos do DOM ----
 const grid = document.getElementById("mixes-grid");
-const modalNick = document.getElementById("modal-nick");
+const userPanel = document.getElementById("user-panel");
+const userEmailEl = document.getElementById("user-email");
+const userNickEl = document.getElementById("user-nick");
+const nickLockInfoEl = document.getElementById("nick-lock-info");
+const btnChangeNick = document.getElementById("btn-change-nick");
+const btnLogout = document.getElementById("btn-logout");
+const levelSelect = document.getElementById("user-level");
+
+// Header
+const nickDisplay = document.getElementById("current-nick");
+const changeNickBtn = document.getElementById("change-nick");
+
+// Modais
+const modalRegister = document.getElementById("modal-register");
 const modalLogin = document.getElementById("modal-login");
+const modalSetNick = document.getElementById("modal-setnick");
+const modalType = document.getElementById("modal-type");
 const formRegister = document.getElementById("form-register");
 const formLogin = document.getElementById("form-login");
-const regNick = document.getElementById("reg-nick");
+const formSetNick = document.getElementById("form-setnick");
+const formType = document.getElementById("form-type");
 const regEmail = document.getElementById("reg-email");
 const regPass = document.getElementById("reg-pass");
 const loginEmail = document.getElementById("login-email");
 const loginPass = document.getElementById("login-pass");
+const newNick = document.getElementById("new-nick");
 const btnShowLogin = document.getElementById("btn-show-login");
 const btnBackRegister = document.getElementById("btn-back-register");
-const nickDisplay = document.getElementById("current-nick");
-const changeNickBtn = document.getElementById("change-nick");
-const modalType = document.getElementById("modal-type");
-const formType = document.getElementById("form-type");
 const modalTypeDay = document.getElementById("modal-type-day");
+
 const toastArea = document.getElementById("toast-area");
-const adminBtn = document.getElementById("admin-btn");
 
 let pendingTypeDate = null;
+let suppressSetNickPrompt = false; // impede modal de nick quando o próprio user acabou de salvar
 
 subscribe(() => render());
 
+// ---- Toast ----
 function toast(msg, kind = "") {
   if (!toastArea) return;
   const el = document.createElement("div");
   el.className = `toast ${kind}`;
   el.textContent = msg;
   toastArea.appendChild(el);
-  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); }, 2200);
+  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); }, 2400);
 }
 
+// ---- Render dos cards de mix ----
 function renderMixCard(day) {
   const data = getMix(day.key);
   const count = countSlots(day.key);
   const status = getStatus(count);
   const completeCount = countComplete(day.key);
+  const me = getPlayer();
+  const myNick = me?.nick || "";
 
   const typeLabel = data.type === "online" ? "Online" : data.type === "presencial" ? "Presencial" : "Clique para definir";
   const typeIcon = data.type === "online" ? "🌐" : data.type === "presencial" ? "📍" : "❓";
@@ -59,15 +77,14 @@ function renderMixCard(day) {
   let slotsHtml = "";
   for (let i = 1; i <= 10; i++) {
     const nick = data.slots?.[i];
-    const isMe = nick && nick === getNick();
-    const isBannedUser = nick && isBanned(nick);
-    slotsHtml += `<div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""} ${isBannedUser ? "banned" : ""}" data-date="${day.key}" data-slot="${i}" title="${nick ? escapeHtml(nick) : `Slot ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
+    const isMe = nick && nick === myNick;
+    slotsHtml += `<div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}" data-date="${day.key}" data-slot="${i}" title="${nick ? escapeHtml(nick) : `Slot ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
   }
 
   let completeHtml = "";
   for (let i = 1; i <= 5; i++) {
     const nick = data.complete?.[i];
-    const isMe = nick && nick === getNick();
+    const isMe = nick && nick === myNick;
     completeHtml += `<div class="complete-slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}" data-date="${day.key}" data-complete="${i}" title="${nick ? escapeHtml(nick) : `Complete ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
   }
 
@@ -95,109 +112,161 @@ function renderMixCard(day) {
 }
 
 function render() {
-  if (!grid) return;
-  grid.innerHTML = getNext10Days().map(renderMixCard).join("");
-  updateUI();
-}
+  // Render user panel + header
+  renderUserArea();
 
-function updateUI() {
-  if (!auth?.currentUser) {
-    if (nickDisplay) nickDisplay.textContent = "—";
-    if (changeNickBtn) changeNickBtn.textContent = "Entrar";
-  } else {
-    if (nickDisplay) nickDisplay.textContent = getNick() || "—";
-    if (changeNickBtn) changeNickBtn.textContent = "Sair";
+  if (grid) {
+    grid.innerHTML = getNext10Days().map(renderMixCard).join("");
   }
 }
 
-// ---- Auth modals ----
+function renderUserArea() {
+  const me = getPlayer();
+  const logged = isLoggedIn();
+
+  if (userPanel) userPanel.hidden = !logged;
+  if (logged && me) {
+    if (userEmailEl) userEmailEl.textContent = me.email || getEmail();
+    if (userNickEl) userNickEl.textContent = me.nick;
+    if (nickLockInfoEl) {
+      nickLockInfoEl.textContent = me.nickChanged ? "🔒 Nick travado (já trocaste)" : "";
+    }
+    if (btnChangeNick) {
+      btnChangeNick.disabled = !!me.nickChanged;
+      btnChangeNick.textContent = me.nickChanged ? "Nick travado" : "Trocar Nick";
+    }
+    if (levelSelect) levelSelect.value = String(me.level);
+  }
+
+  if (nickDisplay) nickDisplay.textContent = logged && me ? me.nick : "—";
+  if (changeNickBtn) changeNickBtn.textContent = logged ? "Sair" : "Entrar";
+}
+
+// ---- Modal fluxo: abrir modal de registro automaticamente se deslogado ----
+function maybeOpenAuthModal() {
+  if (!isAuthReady()) return; // espera o Firebase Auth inicializar
+  if (!isLoggedIn() && modalRegister && !modalRegister.open) {
+    setTimeout(() => modalRegister.showModal(), 200);
+  }
+}
+
+// ---- Auth (criar / entrar) ----
 function setupAuth() {
-  // Show register modal if not logged in
-  if (!auth?.currentUser) {
-    setTimeout(() => modalNick?.showModal(), 300);
-  } else {
-    updateUI();
-  }
+  // Garante que o modal abre quando o site carrega
+  setTimeout(maybeOpenAuthModal, 400);
 
-  // Botão ao lado de "Jogando como" → Entrar / Sair
+  // Botão "Entrar" / "Sair" no header
   if (changeNickBtn) {
     changeNickBtn.addEventListener("click", async () => {
-      if (auth?.currentUser) {
-        if (confirm(`Sair da conta ${getNick()}?`)) {
-          await logoutUser();
-          toast("Você saiu", "success");
-          updateUI();
-          modalNick.showModal();
+      if (isLoggedIn()) {
+        if (confirm(`Sair da conta ${getEmail()}?`)) {
+          try { await logoutUser(); toast("Sessão encerrada", "success"); }
+          catch (e) { toast(e.message, "error"); }
         }
       } else {
-        modalNick.showModal();
+        modalRegister.showModal();
       }
     });
   }
 
-  // Já possuo conta → abre modal login
+  // Botão "Já possuo conta" no modal de registro → abre modal de login
   if (btnShowLogin) {
     btnShowLogin.addEventListener("click", () => {
-      modalNick.close();
+      modalRegister.close();
       modalLogin.showModal();
     });
   }
 
-  // Voltar para criar conta
+  // Botão "← Criar nova conta" no modal de login → volta pro registro
   if (btnBackRegister) {
     btnBackRegister.addEventListener("click", () => {
       modalLogin.close();
-      modalNick.showModal();
+      modalRegister.showModal();
     });
   }
 
-  // CRIAR conta
+  // Submit CRIAR conta
   if (formRegister) {
     formRegister.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const nick = sanitizeNick(regNick.value);
       const email = regEmail.value.trim();
       const pass = regPass.value;
-
-      if (nick.length < 2) { toast("Nick: mínimo 2 caracteres", "error"); return; }
-      if (pass.length < 6) { toast("Senha: mínimo 6 caracteres", "error"); return; }
-
+      if (!email || !pass) return;
+      if (pass.length < 6) { toast("Senha precisa ter no mínimo 6 caracteres", "error"); return; }
       try {
-        await registerUser(email, pass, nick);
-        setNick(nick);
-        modalNick.close();
-        toast("Conta criada! Bem-vindo!", "success");
-        updateUI();
-        render();
+        await registerUser(email, pass);
+        modalRegister.close();
+        toast("Conta criada! 🎉", "success");
+        // Após login o onAuthStateChanged dispara ensurePlayerProfile
+        // que cria o perfil com nick padrão (parte do email antes do @)
       } catch (err) {
         console.error(err);
-        toast(err.message.replace("Firebase: ", ""), "error");
+        toast(cleanMsg(err.message), "error");
       }
     });
   }
 
-  // ENTRAR na conta existente
+  // Submit ENTRAR na conta existente
   if (formLogin) {
     formLogin.addEventListener("submit", async (e) => {
       e.preventDefault();
       const email = loginEmail.value.trim();
       const pass = loginPass.value;
-
       try {
         await loginUser(email, pass);
         modalLogin.close();
-        toast("Login realizado!", "success");
-        updateUI();
-        render();
+        toast("Login feito! Bem-vindo de volta 👋", "success");
       } catch (err) {
         console.error(err);
-        toast(err.message.replace("Firebase: ", ""), "error");
+        toast(cleanMsg(err.message), "error");
+      }
+    });
+  }
+
+  // Sair (botão da área do usuário)
+  if (btnLogout) {
+    btnLogout.addEventListener("click", async () => {
+      try { await logoutUser(); toast("Sessão encerrada", "success"); }
+      catch (e) { toast(e.message, "error"); }
+    });
+  }
+
+  // Trocar nick (botão da área do usuário)
+  if (btnChangeNick) {
+    btnChangeNick.addEventListener("click", () => {
+      const me = getPlayer();
+      if (!me) return;
+      if (me.nickChanged) {
+        toast("Já trocaste teu nick. Não dá pra trocar de novo.", "error");
+        return;
+      }
+      if (newNick) newNick.value = me.nick;
+      modalSetNick.showModal();
+    });
+  }
+
+  // Submit troca de nick
+  if (formSetNick) {
+    formSetNick.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        await changeNick(newNick.value);
+        suppressSetNickPrompt = true;
+        modalSetNick.close();
+        toast("Nick atualizado! 🔒", "success");
+        render();
+      } catch (err) {
+        toast(err.message, "error");
       }
     });
   }
 }
 
-// ---- Type modal ----
+function cleanMsg(msg) {
+  return String(msg || "").replace(/^Firebase:\s*/i, "").replace(/^Error:\s*/i, "");
+}
+
+// ---- Modal de tipo (online/presencial) ----
 function setupTypeModal() {
   const cancelBtn = modalType?.querySelector("[data-close]");
   if (cancelBtn) cancelBtn.addEventListener("click", () => modalType?.close());
@@ -221,13 +290,11 @@ function setupTypeModal() {
   document.addEventListener("click", (e) => {
     const badge = e.target.closest('[data-action="set-type"]');
     if (!badge) return;
-
-    if (!auth?.currentUser) {
-      toast("Faça login primeiro!", "error");
-      modalNick?.showModal();
+    if (!isLoggedIn()) {
+      toast("Faça login primeiro", "error");
+      modalRegister?.showModal();
       return;
     }
-
     pendingTypeDate = badge.dataset.date;
     const day = getNext10Days().find((d) => d.key === pendingTypeDate);
     if (modalTypeDay) modalTypeDay.textContent = day ? `${day.dayLong} (${day.dateBR})` : pendingTypeDate;
@@ -237,7 +304,7 @@ function setupTypeModal() {
   });
 }
 
-// ---- Slot / complete / copy ----
+// ---- Clique em slot / complete / copiar ----
 function setupSlotClick() {
   document.addEventListener("click", async (e) => {
     const slot = e.target.closest(".slot");
@@ -247,13 +314,14 @@ function setupSlotClick() {
     if (copyBtn) { copyListToClipboard(copyBtn.dataset.date); return; }
     if (!slot && !complete) return;
 
-    if (!auth?.currentUser) {
-      toast("Faça login primeiro!", "error");
-      modalNick?.showModal();
+    if (!isLoggedIn()) {
+      toast("Faça login primeiro", "error");
+      modalRegister?.showModal();
       return;
     }
-
-    const nick = getNick();
+    const me = getPlayer();
+    if (!me) return;
+    const nick = me.nick;
     if (slot) await handleSlotClick(slot.dataset.date, parseInt(slot.dataset.slot, 10), nick);
     else if (complete) await handleCompleteClick(complete.dataset.date, parseInt(complete.dataset.complete, 10), nick);
   });
@@ -261,34 +329,39 @@ function setupSlotClick() {
 
 async function handleSlotClick(dateKey, slotNum, nick) {
   const current = getMix(dateKey).slots?.[slotNum];
-  if (current === nick) {
-    await leaveSlot(dateKey, slotNum, nick);
-    toast("Você saiu do slot", "success");
-  } else if (!current) {
-    const dayData = getMix(dateKey);
-    if (dayData.slots) for (const [k, n] of Object.entries(dayData.slots)) if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
-    if (dayData.complete) for (const [k, n] of Object.entries(dayData.complete)) if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
-    await joinSlot(dateKey, slotNum, nick);
-    toast(`Slot ${slotNum} reservado!`, "success");
-  } else {
-    toast("Esse slot já está ocupado", "error");
-  }
+  try {
+    if (current === nick) {
+      await leaveSlot(dateKey, slotNum, nick);
+      toast("Saiu do slot", "success");
+    } else if (!current) {
+      // Limpa o nick de qualquer outro slot/complete do mesmo dia
+      const dayData = getMix(dateKey);
+      if (dayData.slots) for (const [k, n] of Object.entries(dayData.slots)) if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
+      if (dayData.complete) for (const [k, n] of Object.entries(dayData.complete)) if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
+      await joinSlot(dateKey, slotNum, nick);
+      toast(`Slot ${slotNum} reservado!`, "success");
+    } else {
+      toast("Esse slot já tá ocupado", "error");
+    }
+  } catch (err) { toast(err.message, "error"); }
 }
 
 async function handleCompleteClick(dateKey, compNum, nick) {
   const current = getMix(dateKey).complete?.[compNum];
-  if (current === nick) {
-    await leaveComplete(dateKey, compNum, nick);
-    toast("Você saiu do complete", "success");
-  } else if (!current) {
-    const dayData = getMix(dateKey);
-    if (dayData.slots) for (const [k, n] of Object.entries(dayData.slots)) if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
-    if (dayData.complete) for (const [k, n] of Object.entries(dayData.complete)) if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
-    await joinComplete(dateKey, compNum, nick);
-    toast(`Complete ${compNum} reservado!`, "success");
-  } else {
-    toast("Esse complete já está ocupado", "error");
-  }
+  try {
+    if (current === nick) {
+      await leaveComplete(dateKey, compNum, nick);
+      toast("Saiu do complete", "success");
+    } else if (!current) {
+      const dayData = getMix(dateKey);
+      if (dayData.slots) for (const [k, n] of Object.entries(dayData.slots)) if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
+      if (dayData.complete) for (const [k, n] of Object.entries(dayData.complete)) if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
+      await joinComplete(dateKey, compNum, nick);
+      toast(`Complete ${compNum} reservado!`, "success");
+    } else {
+      toast("Esse complete já tá ocupado", "error");
+    }
+  } catch (err) { toast(err.message, "error"); }
 }
 
 function copyListToClipboard(dateKey) {
@@ -304,100 +377,41 @@ function copyListToClipboard(dateKey) {
   navigator.clipboard.writeText(text.trim()).then(() => toast("Lista copiada!", "success")).catch(() => toast("Erro ao copiar", "error"));
 }
 
-// ---- Admin modal ----
-function setupAdmin() {
-  const modalAdmin = document.getElementById("modal-admin");
-  const formAdmin = document.getElementById("form-admin");
-  const adminEmail = document.getElementById("admin-email");
-  const adminPass = document.getElementById("admin-pass");
-  const adminPanel = document.getElementById("admin-panel");
-  const banInput = document.getElementById("ban-nick");
-  const btnBan = document.getElementById("btn-ban");
-  const btnUnban = document.getElementById("btn-unban");
-  const bannedList = document.getElementById("banned-list");
-  const cancelBtn = modalAdmin?.querySelector("[data-close]");
-
-  if (!modalAdmin || !adminBtn) return;
-
-  adminBtn.addEventListener("click", () => {
-    if (isAdminLoggedIn()) {
-      showAdminPanel();
-    } else {
-      if (adminPanel) adminPanel.style.display = "none";
-      if (formAdmin) formAdmin.style.display = "block";
-      if (formAdmin) formAdmin.reset();
-      modalAdmin.showModal();
+// ---- Level (1k–30k) na área do usuário ----
+function setupLevelSelect() {
+  if (!levelSelect) return;
+  // Preenche as opções 1k..30k em passos de 1k
+  levelSelect.innerHTML = "";
+  for (let v = 1000; v <= 30000; v += 1000) {
+    const opt = document.createElement("option");
+    opt.value = String(v);
+    opt.textContent = `${(v / 1000).toFixed(0)}k`;
+    levelSelect.appendChild(opt);
+  }
+  levelSelect.addEventListener("change", async () => {
+    const me = getPlayer();
+    if (!me) { toast("Faça login primeiro", "error"); return; }
+    const newLevel = parseInt(levelSelect.value, 10);
+    try {
+      const { setMyLevel } = await import("./identity.js");
+      await setMyLevel(newLevel);
+      toast(`Level atualizado pra ${(newLevel / 1000).toFixed(0)}k!`, "success");
+    } catch (err) {
+      toast(err.message, "error");
     }
-  });
-
-  if (cancelBtn) cancelBtn.addEventListener("click", () => modalAdmin.close());
-
-  if (formAdmin) {
-    formAdmin.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const email = adminEmail?.value.trim();
-      const pass = adminPass?.value;
-      try {
-        await loginUser(email, pass);
-        // Espera onAuthStateChanged setar isAdminUser
-        await new Promise(r => setTimeout(r, 500));
-        if (isAdminLoggedIn()) {
-          toast("Login admin realizado!", "success");
-          showAdminPanel();
-        } else {
-          toast("Este email não é admin", "error");
-        }
-      } catch (err) {
-        toast(err.message.replace("Firebase: ", ""), "error");
-      }
-    });
-  }
-
-  function showAdminPanel() {
-    if (adminPanel) adminPanel.style.display = "block";
-    if (formAdmin) formAdmin.style.display = "none";
-    renderBannedList();
-    modalAdmin.showModal();
-  }
-
-  function renderBannedList() {
-    if (!bannedList) return;
-    const banned = getBannedNicks();
-    if (banned.length === 0) { bannedList.innerHTML = '<li style="color: var(--text-faint);">Nenhum nick banido</li>'; return; }
-    bannedList.innerHTML = banned.map((nick) => `<li><span>${escapeHtml(nick)}</span><button class="unban-btn" data-unban="${escapeHtml(nick)}">Desbanir</button></li>`).join("");
-  }
-
-  if (btnBan) btnBan.addEventListener("click", async () => {
-    const nick = sanitizeNick(banInput?.value);
-    if (!nick) { toast("Digite um nick", "error"); return; }
-    try { await banNick(nick); toast(`${nick} banido!`, "success"); renderBannedList(); }
-    catch (err) { toast(err.message, "error"); }
-    if (banInput) banInput.value = "";
-  });
-
-  if (btnUnban) btnUnban.addEventListener("click", async () => {
-    const nick = sanitizeNick(banInput?.value);
-    if (!nick) { toast("Digite um nick", "error"); return; }
-    try { await unbanNick(nick); toast(`${nick} desbanido!`, "success"); renderBannedList(); }
-    catch (err) { toast(err.message, "error"); }
-    if (banInput) banInput.value = "";
-  });
-
-  document.addEventListener("click", async (e) => {
-    const unbanBtn = e.target.closest("[data-unban]");
-    if (!unbanBtn) return;
-    try { await unbanNick(unbanBtn.dataset.unban); toast("Desbanido!", "success"); renderBannedList(); }
-    catch (err) { toast(err.message, "error"); }
   });
 }
 
+// ---- Boot ----
 function boot() {
   setupAuth();
   setupTypeModal();
   setupSlotClick();
-  setupAdmin();
-  // Aguarda um momento para o Firebase Auth inicializar
-  setTimeout(render, 200);
+  setupLevelSelect();
+  render();
+  // Re-render depois que o auth inicializar (pega perfil)
+  setTimeout(render, 500);
+  setTimeout(render, 1500);
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

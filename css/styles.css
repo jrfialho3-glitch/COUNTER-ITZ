@@ -925,3 +925,139 @@ dialog::backdrop {
   color: var(--yellow);
   font-weight: 600;
 }
+
+/* ============================================
+   Painel Admin
+   ============================================ */
+.admin-section {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.admin-section h2 {
+  margin: 0 0 14px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.admin-search {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-table tr:hover {
+  background: var(--bg-elev-2);
+}
+
+.admin-table .level-input {
+  width: 80px !important;
+  padding: 6px 8px !important;
+  font-size: 0.82rem !important;
+}
+
+.admin-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-actions button {
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+
+.btn-mini-primary {
+  background: var(--blue-soft);
+  color: var(--blue);
+  border-color: var(--blue) !important;
+}
+.btn-mini-primary:hover { background: var(--blue); color: #fff; }
+
+.btn-mini-danger {
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: var(--red) !important;
+}
+.btn-mini-danger:hover { background: var(--red); color: #fff; }
+
+.btn-mini-success {
+  background: var(--green-soft);
+  color: var(--green);
+  border-color: var(--green) !important;
+}
+.btn-mini-success:hover { background: var(--green); color: #fff; }
+
+.banned-row {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.admin-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+}
+
+.admin-banner {
+  background: linear-gradient(135deg, var(--purple), var(--red));
+  color: #fff;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-banner-text {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.admin-banner-email {
+  font-size: 0.78rem;
+  opacity: 0.85;
+  font-weight: 500;
+  text-transform: none;
+}

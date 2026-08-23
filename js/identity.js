@@ -1,221 +1,363 @@
 // js/identity.js
-// Sistema completo usando Firebase Auth (email/senha) + RTDB para dados
-// Admin: posseydom@gmail.com / manu123@ (UID added to /admins in Database)
+// Auth + dados via Firebase (RTDB). Tudo online e em tempo real.
+// Admin é checado via /admins/{uid} no RTDB (nada hardcoded).
 
-import { ref, onValue, set, update, remove, get, push } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getDatabase, ref, onValue, set, update, remove, get } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 import {
+  getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged,
-  updateProfile
+  onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { db, auth } from "./firebase-config.js";
-import { escapeHtml } from "./utils.js";
 
-const NICK_KEY = "counteritz_nick";
-const ADMIN_SESSION_KEY = "counteritz_admin_session";
+const firebaseConfig = {
+  apiKey: "AIzaSyAziFdP1iU_1Dw_etjM40YX91x4HFHFRaU",
+  authDomain: "counter-itz-5a08b.firebaseapp.com",
+  databaseURL: "https://counter-itz-5a08b-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "counter-itz-5a08b",
+  storageBucket: "counter-itz-5a08b.firebasestorage.app",
+  messagingSenderId: "848663837161",
+  appId: "1:848663837161:web:5003ec4eab7bf5d02d3378"
+};
 
-let currentNick = null;
-let currentUser = null; // Firebase User
-let isAdminUser = false;
+const app = initializeApp(firebaseConfig);
+export const db = getDatabase(app);
+export const auth = getAuth(app);
+
+// ---- Estado ----
+let currentUser = null;
+let currentUid = null;
+let playerData = null;
 let playersCache = {};
 let bannedCache = [];
 let mixesCache = {};
-let listenersInitialized = false;
-let authReady = false;
+let listenersReady = false;
+let authReady = false; // virou true depois do primeiro onAuthStateChanged
 
-// Callbacks
-const listeners = new Set();
-function notifyListeners() {
-  listeners.forEach(cb => cb());
+const subs = new Set();
+const notify = () => { for (const cb of subs) { try { cb(); } catch (e) { console.error(e); } } };
+export function subscribe(cb) { subs.add(cb); return () => subs.delete(cb); }
+
+// ---- Info do usuário ----
+export function getUid() { return currentUid; }
+export function getEmail() { return currentUser?.email || ""; }
+export function isLoggedIn() { return !!currentUser; }
+export function isAuthReady() { return authReady; }
+
+export function getPlayer() {
+  if (!playerData || !currentUid) return null;
+  return {
+    uid: currentUid,
+    nick: playerData.nick || "",
+    email: playerData.email || getEmail(),
+    level: playerData.level ?? 1000,
+    nickChanged: !!playerData.nickChanged
+  };
 }
 
-export function subscribe(cb) {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
-}
-
-// ---- Níveis / cores ----
-export function getLevelColor(level) {
-  const levels = [
-    { max: 1000, color: "#38bdf8" }, { max: 10000, color: "#0c4a6e" },
-    { max: 15000, color: "#ec4899" }, { max: 20000, color: "#a855f7" },
-    { max: 25000, color: "#ef4444" }, { max: 30000, color: "#eab308" },
-  ];
-  if (level <= 1000) return levels[0].color;
-  if (level >= 30000) return levels[5].color;
-  for (let i = 0; i < levels.length - 1; i++) {
-    if (level >= levels[i].max && level <= levels[i + 1].max) {
-      const ratio = (level - levels[i].max) / (levels[i + 1].max - levels[i].max);
-      return interpolateColor(levels[i].color, levels[i + 1].color, ratio);
-    }
+export function getAllPlayers() {
+  const list = [];
+  for (const [uid, p] of Object.entries(playersCache)) {
+    if (!p?.nick) continue;
+    list.push({
+      uid,
+      nick: p.nick,
+      level: p.level ?? 1000,
+      banned: bannedCache.includes(p.nick)
+    });
   }
-  return levels[5].color;
+  list.sort((a, b) => b.level - a.level);
+  return list;
 }
 
-function interpolateColor(c1, c2, r) {
-  const a = parseInt(c1.slice(1), 16), b = parseInt(c2.slice(1), 16);
-  const r1 = (a >> 16) & 255, g1 = (a >> 8) & 255, b1 = a & 255;
-  const r2 = (b >> 16) & 255, g2 = (b >> 8) & 255, b2 = b & 255;
-  const rr = Math.round(r1 + (r2 - r1) * r);
-  const gg = Math.round(g1 + (g2 - g1) * r);
-  const bb = Math.round(b1 + (b2 - b1) * r);
-  return `#${((rr << 16) | (gg << 8) | bb).toString(16).padStart(6, "0")}`;
-}
-
-export function formatLevel(level) {
-  if (level >= 1000000) return `${(level / 1000000).toFixed(1)}M`;
-  if (level >= 1000) return `${(level / 1000).toFixed(0)}k`;
-  return level.toString();
-}
-
-// ---- Session ----
-export function getNick() {
-  if (currentNick) return currentNick;
-  try { currentNick = localStorage.getItem(NICK_KEY) || null; } catch { currentNick = null; }
-  return currentNick;
-}
-
-export function setNick(nick) {
-  try { localStorage.setItem(NICK_KEY, nick); currentNick = nick; } catch {}
-}
-
-export function clearSession() {
-  try { localStorage.removeItem(NICK_KEY); currentNick = null; } catch {}
-}
-
-// ---- Firebase Listeners ----
-function startListeners() {
-  if (listenersInitialized) return;
-  onValue(ref(db, "players"), snap => { playersCache = snap.val() || {}; notifyListeners(); });
-  onValue(ref(db, "banned"), snap => { bannedCache = snap.val() || []; notifyListeners(); });
-  onValue(ref(db, "mixes"), snap => { mixesCache = snap.val() || {}; notifyListeners(); });
-  listenersInitialized = true;
+export function getPlayerByNick(nick) {
+  for (const [uid, p] of Object.entries(playersCache)) {
+    if (p?.nick === nick) return { uid, ...p };
+  }
+  return null;
 }
 
 // ---- Auth ----
-export function isAdminLoggedIn() { return isAdminUser && auth.currentUser !== null; }
+export async function registerUser(email, password) {
+  const cred = await createUserWithEmailAndPassword(auth, email, password);
+  return cred.user;
+}
 
 export async function loginUser(email, password) {
   const cred = await signInWithEmailAndPassword(auth, email, password);
   return cred.user;
 }
 
-export async function registerUser(email, password, nick) {
-  const cred = await createUserWithEmailAndPassword(auth, email, password);
-  await updateProfile(cred.user, { displayName: nick });
-  // Create player profile in RTDB
-  await set(ref(db, `players/${cred.user.uid}`), {
-    nick, email, level: 1000, createdAt: Date.now()
-  });
-  return cred.user;
-}
-
 export async function logoutUser() {
   await signOut(auth);
-  clearSession();
 }
 
-function checkAdminStatus(uid) {
-  return get(ref(db, `admins/${uid}`)).then(snap => snap.exists());
-}
-
-function setupAuthListener() {
-  onAuthStateChanged(auth, async (user) => {
-    currentUser = user;
-    if (user) {
-      isAdminUser = await checkAdminStatus(user.uid);
-      authReady = true;
-      // Load nick from profile or RTDB
-      const playerSnap = await get(ref(db, `players/${user.uid}`));
-      if (playerSnap.exists()) {
-        currentNick = playerSnap.val().nick;
-        setNick(currentNick);
-      } else if (user.displayName) {
-        currentNick = user.displayName;
-        setNick(currentNick);
-      }
-      startListeners();
-      notifyListeners();
-    } else {
-      isAdminUser = false;
-      authReady = true;
-      currentNick = null;
-      playersCache = {}; bannedCache = []; mixesCache = {};
-      notifyListeners();
-    }
-  });
-}
-setupAuthListener();
-
-// ---- Players ----
-export function getAllPlayers() {
-  const arr = [];
-  for (const [uid, data] of Object.entries(playersCache)) {
-    if (data.nick) arr.push({ uid, nick: data.nick, level: data.level || 1000, banned: bannedCache.includes(data.nick) });
+// Cria perfil do player no banco se não existir
+async function ensurePlayerProfile(user) {
+  const refP = ref(db, `players/${user.uid}`);
+  const snap = await get(refP);
+  if (snap.exists()) {
+    playerData = snap.val();
+    return;
   }
-  arr.sort((a, b) => b.level - a.level);
-  return arr;
+  // Nick padrão = parte do email antes do @
+  const defaultNick = (user.email || "player").split("@")[0].replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 24) || "player";
+  playerData = {
+    email: user.email,
+    nick: defaultNick,
+    level: 1000,
+    nickChanged: false,
+    createdAt: Date.now()
+  };
+  await set(refP, playerData);
 }
 
-export function getPlayerByNick(nick) {
-  for (const [uid, data] of Object.entries(playersCache)) if (data.nick === nick) return { uid, ...data };
-  return null;
+// Player escolhe o próprio level (1k a 30k)
+export async function setMyLevel(level) {
+  if (!currentUid) throw new Error("Não estás logado");
+  const v = Math.max(1000, Math.min(30000, Math.floor(Number(level) || 1000)));
+  await update(ref(db, `players/${currentUid}`), { level: v });
+  if (playerData) playerData.level = v;
+  return v;
 }
 
-export function nickExists(nick) { return getPlayerByNick(nick) !== null; }
+// Trocar nick (apenas 1 vez por conta)
+export async function changeNick(newNick) {
+  if (!currentUid) throw new Error("Não estás logado");
+  const p = getPlayer();
+  if (!p) throw new Error("Perfil não carregado");
+  if (p.nickChanged) throw new Error("Já trocaste teu nick. Não dá pra trocar de novo.");
 
-// Admin-only operations
-export async function setPlayerLevel(nick, level) {
-  if (!isAdminLoggedIn()) throw new Error("Apenas admin");
-  const p = getPlayerByNick(nick);
-  if (!p) throw new Error("Player não encontrado");
-  await update(ref(db, `players/${p.uid}`), { level: Math.max(1000, Math.min(30000, level)) });
+  const clean = (newNick || "").trim();
+  if (clean.length < 2) throw new Error("Nick muito curto (mínimo 2 letras)");
+  if (clean.length > 24) throw new Error("Nick muito longo (máximo 24)");
+
+  // Não permite duplicado
+  const existing = getPlayerByNick(clean);
+  if (existing && existing.uid !== currentUid) {
+    throw new Error("Esse nick já tá em uso por outra pessoa");
+  }
+
+  await update(ref(db, `players/${currentUid}`), {
+    nick: clean,
+    nickChanged: true
+  });
+  playerData.nick = clean;
+  playerData.nickChanged = true;
 }
 
-export async function banNick(nick) {
-  if (!isAdminLoggedIn()) throw new Error("Apenas admin");
-  if (bannedCache.includes(nick)) return;
-  await set(ref(db, "banned"), [...bannedCache, nick]);
-}
-
-export async function unbanNick(nick) {
-  if (!isAdminLoggedIn()) throw new Error("Apenas admin");
-  await set(ref(db, "banned"), bannedCache.filter(n => n !== nick));
-}
-
+// ---- Ban (lista simples baseada em nicks) ----
 export function getBannedNicks() { return [...bannedCache]; }
 export function isBanned(nick) { return bannedCache.includes(nick); }
 
+// ---- Admin ----
+let adminCache = {}; // { uid: true }
+
+export function isAdmin() {
+  return !!currentUid && !!adminCache[currentUid];
+}
+
+export async function adminResetNick(uid) {
+  if (!isAdmin()) throw new Error("Sem permissão de admin");
+  if (!uid) throw new Error("UID inválido");
+  await update(ref(db, `players/${uid}`), {
+    nickChanged: false
+  });
+}
+
+export async function adminSetLevel(uid, level) {
+  if (!isAdmin()) throw new Error("Sem permissão de admin");
+  if (!uid) throw new Error("UID inválido");
+  const v = Math.max(1000, Math.min(30000, Math.floor(Number(level) || 1000)));
+  await update(ref(db, `players/${uid}`), { level: v });
+}
+
+export async function adminSetNick(uid, newNick) {
+  if (!isAdmin()) throw new Error("Sem permissão de admin");
+  if (!uid) throw new Error("UID inválido");
+  const clean = (newNick || "").trim();
+  if (clean.length < 2) throw new Error("Nick muito curto");
+  if (clean.length > 24) throw new Error("Nick muito longo");
+  await update(ref(db, `players/${uid}`), { nick: clean });
+}
+
+export async function adminBanNick(nick) {
+  if (!isAdmin()) throw new Error("Sem permissão de admin");
+  if (!nick) throw new Error("Nick inválido");
+  if (bannedCache.includes(nick)) return;
+  await set(ref(db, `banned/${bannedCache.length}`), nick);
+}
+
+export async function adminUnbanNick(nick) {
+  if (!isAdmin()) throw new Error("Sem permissão de admin");
+  if (!nick) throw new Error("Nick inválido");
+  const idx = bannedCache.indexOf(nick);
+  if (idx === -1) return;
+  const updates = {};
+  updates[`banned/${idx}`] = null;
+  // Reordenar array pra não ficar com buracos
+  const remaining = bannedCache.filter((n) => n !== nick);
+  updates["banned"] = remaining.length ? remaining : null;
+  await update(ref(db, ""), updates);
+}
+
+export async function adminForceRollover() {
+  if (!isAdmin()) throw new Error("Sem permissão de admin");
+  const today = formatDateKey(new Date());
+  const updates = {};
+  const dayKeys = Object.keys(mixesCache).filter((k) => k < today);
+  for (const dateKey of dayKeys) {
+    const data = mixesCache[dateKey];
+    if (!data) continue;
+    const slots = data.slots || {};
+    const complete = data.complete || {};
+    const totalFilled = Object.values(slots).filter(Boolean).length;
+    if (totalFilled >= 10) {
+      updates[`history/${dateKey}`] = {
+        type: data.type || "online",
+        slots,
+        complete,
+        closedAt: Date.now(),
+        forcedByAdmin: true
+      };
+    }
+    updates[`mixes/${dateKey}`] = null;
+  }
+  updates["meta/lastRollover"] = today;
+  await update(ref(db, ""), updates);
+}
+
+function formatDateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+export function getAllPlayersDetailed() {
+  const list = [];
+  for (const [uid, p] of Object.entries(playersCache)) {
+    if (!p?.nick) continue;
+    list.push({
+      uid,
+      nick: p.nick,
+      email: p.email || "",
+      level: p.level ?? 1000,
+      nickChanged: !!p.nickChanged,
+      banned: bannedCache.includes(p.nick),
+      createdAt: p.createdAt || 0
+    });
+  }
+  list.sort((a, b) => b.level - a.level);
+  return list;
+}
+
 // ---- Mixes ----
-export function getMix(dateKey) { return mixesCache[dateKey] || { type: "none", slots: {}, complete: {} }; }
-export function countSlots(dateKey) { const d = mixesCache[dateKey]; return d?.slots ? Object.values(d.slots).filter(Boolean).length : 0; }
-export function countComplete(dateKey) { const d = mixesCache[dateKey]; return d?.complete ? Object.values(d.complete).filter(Boolean).length : 0; }
+export function getMix(dateKey) {
+  return mixesCache[dateKey] || { type: "none", slots: {}, complete: {} };
+}
+export function countSlots(dateKey) {
+  const d = mixesCache[dateKey];
+  return d?.slots ? Object.values(d.slots).filter(Boolean).length : 0;
+}
+export function countComplete(dateKey) {
+  const d = mixesCache[dateKey];
+  return d?.complete ? Object.values(d.complete).filter(Boolean).length : 0;
+}
 
 export async function setMixType(dateKey, type) {
-  if (!currentUser) throw new Error("Faça login primeiro");
+  if (!currentUid) throw new Error("Faça login primeiro");
   await update(ref(db, `mixes/${dateKey}`), { type });
 }
 
 export async function joinSlot(dateKey, slot, nick) {
-  if (!currentUser) throw new Error("Faça login primeiro");
+  if (!currentUid) throw new Error("Faça login primeiro");
+  if (isBanned(nick)) throw new Error("Estás banido");
   await set(ref(db, `mixes/${dateKey}/slots/${slot}`), nick);
 }
 
 export async function leaveSlot(dateKey, slot, nick) {
-  if (!currentUser) throw new Error("Faça login primeiro");
+  if (!currentUid) throw new Error("Faça login primeiro");
   const snap = await get(ref(db, `mixes/${dateKey}/slots/${slot}`));
   if (snap.val() === nick) await remove(ref(db, `mixes/${dateKey}/slots/${slot}`));
 }
 
 export async function joinComplete(dateKey, slot, nick) {
-  if (!currentUser) throw new Error("Faça login primeiro");
+  if (!currentUid) throw new Error("Faça login primeiro");
+  if (isBanned(nick)) throw new Error("Estás banido");
   await set(ref(db, `mixes/${dateKey}/complete/${slot}`), nick);
 }
 
 export async function leaveComplete(dateKey, slot, nick) {
-  if (!currentUser) throw new Error("Faça login primeiro");
+  if (!currentUid) throw new Error("Faça login primeiro");
   const snap = await get(ref(db, `mixes/${dateKey}/complete/${slot}`));
   if (snap.val() === nick) await remove(ref(db, `mixes/${dateKey}/complete/${slot}`));
 }
+
+// ---- Cores / formatação de level ----
+export function getLevelColor(level) {
+  const stops = [
+    { at: 1000, c: "#38bdf8" },
+    { at: 5000, c: "#22c55e" },
+    { at: 10000, c: "#eab308" },
+    { at: 15000, c: "#ec4899" },
+    { at: 20000, c: "#a855f7" },
+    { at: 25000, c: "#ef4444" },
+    { at: 30000, c: "#f59e0b" }
+  ];
+  if (level <= 1000) return stops[0].c;
+  if (level >= 30000) return stops[stops.length - 1].c;
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (level >= stops[i].at && level <= stops[i + 1].at) {
+      const r = (level - stops[i].at) / (stops[i + 1].at - stops[i].at);
+      return mix(stops[i].c, stops[i + 1].c, r);
+    }
+  }
+  return stops[stops.length - 1].c;
+}
+function mix(a, b, t) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const r = Math.round(((pa >> 16) & 255) + (((pb >> 16) & 255) - ((pa >> 16) & 255)) * t);
+  const g = Math.round(((pa >> 8) & 255) + (((pb >> 8) & 255) - ((pa >> 8) & 255)) * t);
+  const bl = Math.round((pa & 255) + ((pb & 255) - (pa & 255)) * t);
+  return `#${((r << 16) | (g << 8) | bl).toString(16).padStart(6, "0")}`;
+}
+export function formatLevel(level) {
+  if (level >= 1000) return `${(level / 1000).toFixed(level % 1000 === 0 ? 0 : 1)}k`;
+  return String(level);
+}
+
+// ---- Listeners do banco ----
+function startListeners() {
+  if (listenersReady) return;
+  listenersReady = true;
+  onValue(ref(db, "players"), (s) => { playersCache = s.val() || {}; notify(); });
+  onValue(ref(db, "banned"), (s) => { bannedCache = s.val() || []; notify(); });
+  onValue(ref(db, "mixes"), (s) => { mixesCache = s.val() || {}; notify(); });
+  onValue(ref(db, "admins"), (s) => { adminCache = s.val() || {}; notify(); });
+}
+
+// ---- Auth state ----
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+  currentUid = user ? user.uid : null;
+  authReady = true;
+
+  if (user) {
+    try {
+      await ensurePlayerProfile(user);
+      startListeners();
+    } catch (e) {
+      console.error("Erro ao carregar perfil:", e);
+    }
+  } else {
+    playerData = null;
+    playersCache = {};
+    bannedCache = [];
+    mixesCache = {};
+    listenersReady = false;
+  }
+  notify();
+});

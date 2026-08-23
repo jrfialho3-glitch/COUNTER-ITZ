@@ -24,66 +24,110 @@
     </div>
     <a href="ranking.html" class="btn-ghost">🏆 Ranking</a>
     <a href="historico.html" class="btn-ghost">Histórico</a>
-    <button id="admin-btn" class="btn-ghost" type="button">🔐 Admin</button>
+    <a href="admin.html" id="admin-link" class="btn-ghost" hidden>🛡️ Admin</a>
   </header>
 
   <main class="container">
     <h1 class="page-title">Mixes da Semana</h1>
     <p class="page-subtitle">Seleciona um dia, escolhe online ou presencial, e reserva teu slot!</p>
 
+    <!-- Área do usuário logado (só aparece depois do login) -->
+    <section id="user-panel" class="user-panel" hidden>
+      <div class="user-card">
+        <div class="user-info">
+          <div class="user-row">
+            <span class="user-label">Email:</span>
+            <strong id="user-email" class="user-email"></strong>
+          </div>
+          <div class="user-row">
+            <span class="user-label">Nick:</span>
+            <strong id="user-nick" class="user-nick"></strong>
+            <span id="nick-lock-info" class="user-hint"></span>
+          </div>
+          <div class="user-row">
+            <label class="user-label" for="user-level">Teu level:</label>
+            <select id="user-level" class="user-level-select"></select>
+          </div>
+        </div>
+        <div class="user-actions">
+          <button id="btn-change-nick" class="btn-primary" type="button">Trocar Nick</button>
+          <button id="btn-logout" class="btn-ghost" type="button">Sair</button>
+        </div>
+      </div>
+    </section>
+
     <div id="mixes-grid" class="mixes-grid"></div>
   </main>
 
-  <!-- Modal de auth (criar conta / login) -->
-  <dialog id="modal-nick">
-    <div class="modal modal-nick">
+  <!-- MODAL 1: PRIMEIRA TELA = CRIAR CONTA -->
+  <dialog id="modal-register">
+    <div class="modal">
       <div class="logo-big">CI</div>
       <h2>Bem-vindo ao COUNTER-ITZ</h2>
-      <p>Cria uma conta pra jogar nos mixes:</p>
-      <form id="form-register" style="display: block;">
+      <p>Cria tua conta pra jogar nos mixes:</p>
+      <form id="form-register" autocomplete="off">
         <div class="form-row">
-          <input id="reg-nick" type="text" maxlength="24" placeholder="Teu nick" required autocomplete="off" />
+          <label for="reg-email">Email</label>
+          <input id="reg-email" type="email" placeholder="teuemail@gmail.com" required autocomplete="email" />
         </div>
         <div class="form-row">
-          <input id="reg-email" type="email" placeholder="Email" required autocomplete="email" />
-        </div>
-        <div class="form-row">
-          <input id="reg-pass" type="password" minlength="6" placeholder="Senha (mín. 6 caracteres)" required autocomplete="new-password" />
+          <label for="reg-pass">Senha</label>
+          <input id="reg-pass" type="password" minlength="6" placeholder="Mínimo 6 caracteres" required autocomplete="new-password" />
         </div>
         <div class="actions">
           <button type="submit" class="btn-confirm">CRIAR</button>
         </div>
       </form>
-
-      <button id="btn-show-login" class="btn-ghost" style="width: 100%; margin-top: 12px;">Já possuo conta</button>
+      <button id="btn-show-login" class="btn-ghost" style="width:100%;margin-top:12px;">Já possuo conta</button>
     </div>
   </dialog>
 
-  <!-- Modal de login (conta existente) -->
+  <!-- MODAL 2: LOGIN (conta existente) -->
   <dialog id="modal-login">
     <div class="modal">
       <h2>Entrar na conta</h2>
-      <p>Acesse com teu email e senha:</p>
-      <form id="form-login">
+      <p>Digita teu email e senha:</p>
+      <form id="form-login" autocomplete="off">
         <div class="form-row">
-          <input id="login-email" type="email" placeholder="Email" required autocomplete="email" />
+          <label for="login-email">Email</label>
+          <input id="login-email" type="email" placeholder="teuemail@gmail.com" required autocomplete="email" />
         </div>
         <div class="form-row">
-          <input id="login-pass" type="password" placeholder="Senha" required autocomplete="current-password" />
+          <label for="login-pass">Senha</label>
+          <input id="login-pass" type="password" placeholder="Tua senha" required autocomplete="current-password" />
         </div>
         <div class="actions">
           <button type="submit" class="btn-confirm">ENTRAR</button>
         </div>
       </form>
-      <button id="btn-back-register" class="btn-ghost" style="width: 100%; margin-top: 12px;">← Criar nova conta</button>
+      <button id="btn-back-register" class="btn-ghost" style="width:100%;margin-top:12px;">← Criar nova conta</button>
     </div>
   </dialog>
 
-  <!-- Modal de escolher tipo (online/presencial) -->
+  <!-- MODAL 3: TROCAR NICK (só funciona 1 vez) -->
+  <dialog id="modal-setnick">
+    <div class="modal">
+      <h2>Escolhe teu nick</h2>
+      <p>Por padrão teu nick é a parte do email antes do <strong>@</strong>.</p>
+      <p>Ex: <code>junior@gmail.com</code> → nick padrão <strong>junior</strong></p>
+      <p style="font-size:.85rem;color:var(--text-faint);">⚠️ Só podes trocar <strong>1 vez</strong>. Escolhe bem!</p>
+      <form id="form-setnick">
+        <div class="form-row">
+          <label for="new-nick">Novo nick</label>
+          <input id="new-nick" type="text" maxlength="24" minlength="2" placeholder="Teu nick no CS2" required />
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn-confirm">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- MODAL 4: TIPO DO MIX (online/presencial) -->
   <dialog id="modal-type">
     <div class="modal">
       <h2>Tipo do Mix</h2>
-      <p>Escolhe se é online ou presencial pro dia <span id="modal-type-day"></span>:</p>
+      <p>Escolhe o tipo pro dia <span id="modal-type-day"></span>:</p>
       <form id="form-type">
         <div class="form-row">
           <div class="radio-group">
@@ -99,48 +143,11 @@
     </div>
   </dialog>
 
-  <!-- Modal Admin (mesmo email/senha do admin) -->
-  <dialog id="modal-admin">
-    <div class="modal modal-admin">
-      <h2>🔐 Área Admin</h2>
-      <p>Login de admin (email/senha):</p>
-      <form id="form-admin">
-        <div class="form-row">
-          <label for="admin-email">Email</label>
-          <input id="admin-email" type="email" required autocomplete="email" placeholder="posseydom@gmail.com" />
-        </div>
-        <div class="form-row">
-          <label for="admin-pass">Senha</label>
-          <input id="admin-pass" type="password" required autocomplete="current-password" />
-        </div>
-        <div class="actions">
-          <button type="button" class="btn-cancel" data-close>Cancelar</button>
-          <button type="submit" class="btn-confirm">Entrar</button>
-        </div>
-      </form>
-
-      <div id="admin-panel" style="display: none; margin-top: 24px;">
-        <h3>🚫 Banir/Desbanir Nick</h3>
-        <div class="form-row">
-          <input id="ban-nick" type="text" placeholder="Nick para banir/desbanir" autocomplete="off" />
-        </div>
-        <div class="actions" style="margin-top: 8px;">
-          <button type="button" id="btn-ban" class="btn-danger">Banir</button>
-          <button type="button" id="btn-unban" class="btn-primary">Desbanir</button>
-        </div>
-
-        <h3 style="margin-top: 20px;">📋 Nicks Banidos</h3>
-        <ul id="banned-list" style="list-style: none; padding: 0; max-height: 150px; overflow-y: auto;"></ul>
-      </div>
-    </div>
-  </dialog>
-
-  <!-- Toast area -->
   <div id="toast-area"></div>
 
-  <script type="module" src="js/firebase-config.js"></script>
   <script type="module" src="js/identity.js"></script>
   <script type="module" src="js/day-rollover.js"></script>
+  <script type="module" src="js/header-admin.js"></script>
   <script type="module" src="js/ui-home.js"></script>
 </body>
 </html>
