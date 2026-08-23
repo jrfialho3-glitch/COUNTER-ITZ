@@ -792,3 +792,136 @@ dialog::backdrop {
   opacity: 0.4;
   text-decoration: line-through;
 }
+
+/* ============================================
+   Ranking Page
+   ============================================ */
+.ranking-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+}
+
+@media (max-width: 1100px) { .ranking-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 750px)  { .ranking-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .ranking-grid { grid-template-columns: 1fr; } }
+
+.player-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--player-color, var(--blue));
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+
+.player-card:hover {
+  border-color: var(--player-color, var(--blue));
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3), 0 0 8px color-mix(in srgb, var(--player-color, var(--blue)) 30%, transparent);
+}
+
+.player-nick {
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text);
+}
+
+.player-level {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 12px currentColor;
+}
+
+.player-admin-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  width: 100%;
+}
+
+.level-input {
+  width: 90px !important;
+  text-align: center;
+  font-size: 0.85rem;
+  padding: 6px 8px !important;
+}
+
+.btn-set-level {
+  padding: 6px 12px;
+  background: var(--blue);
+  color: #fff;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-set-level:hover {
+  background: #2563eb;
+}
+
+.btn-ban-player {
+  padding: 6px 12px;
+  background: var(--red-soft);
+  color: var(--red);
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-ban-player:hover {
+  background: var(--red);
+  color: #fff;
+}
+
+.btn-unban-player {
+  padding: 6px 12px;
+  background: var(--green-soft);
+  color: var(--green);
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-unban-player:hover {
+  background: var(--green);
+  color: #fff;
+}
+
+.ranking-empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--text-faint);
+}
+
+.admin-warning {
+  background: var(--yellow-soft);
+  border: 1px solid var(--yellow);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 20px;
+  text-align: center;
+  color: var(--yellow);
+  font-weight: 600;
+}

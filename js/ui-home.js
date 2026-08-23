@@ -1,22 +1,35 @@
 // js/ui-home.js
 // Render da home: 10 cards de mix, botão copiar, modal de nick com senha, área admin.
+// USA FIREBASE REALTIME DATABASE - SINCRONISMO EM TEMPO REAL
 
 import {
   getNick,
   setNick,
   setPass,
-  getPass,
   nickExists,
   checkPassword,
   registerNick,
   isBanned,
-  checkAdmin,
-  setAdmin,
   isAdminLoggedIn,
-  validateAdmin,
+  loginAdmin,
+  logoutAdmin,
   getBannedNicks,
   banNick,
   unbanNick,
+  resetPlayerPassword,
+  getAllPlayers,
+  setPlayerLevel,
+  getLevelColor,
+  formatLevel,
+  getMix,
+  setMixType,
+  joinSlot,
+  leaveSlot,
+  joinComplete,
+  leaveComplete,
+  countSlots,
+  countComplete,
+  subscribe
 } from "./identity.js";
 import { getNext10Days, getStatus, sanitizeNick, escapeHtml } from "./utils.js";
 
@@ -35,77 +48,27 @@ const toastArea = document.getElementById("toast-area");
 const adminBtn = document.getElementById("admin-btn");
 
 // Estado local
-let mixState = {};
 let pendingTypeDate = null;
 
-// Carrega/salva estado
-function loadState() {
-  try {
-    const saved = localStorage.getItem("counteritz_mixes");
-    if (saved) mixState = JSON.parse(saved);
-  } catch {
-    mixState = {};
-  }
-}
+// Re-render quando dados mudam
+subscribe(() => render());
 
-function saveState() {
-  try {
-    localStorage.setItem("counteritz_mixes", JSON.stringify(mixState));
-  } catch {}
-}
-
-function ensureDay(dateKey) {
-  if (!mixState[dateKey]) {
-    mixState[dateKey] = { type: "none", slots: {}, complete: {} };
-  }
-}
-
-function countSlots(dateKey) {
-  const day = mixState[dateKey];
-  if (!day) return 0;
-  return Object.keys(day.slots || {}).filter((k) => day.slots[k]).length;
-}
-
-function countComplete(dateKey) {
-  const day = mixState[dateKey];
-  if (!day) return 0;
-  return Object.keys(day.complete || {}).filter((k) => day.complete[k]).length;
-}
-
-// Copiar lista para WhatsApp
-function copyListToClipboard(dateKey) {
-  ensureDay(dateKey);
-  const data = mixState[dateKey];
-  const day = getNext10Days().find((d) => d.key === dateKey);
-  const typeLabel = data.type === "online" ? "ONLINE" : data.type === "presencial" ? "PRESENCIAL" : "A DEFINIR";
-
-  let text = `MIX ${day.dayName} ${day.dateBR} ${typeLabel}\n`;
-
-  for (let i = 1; i <= 10; i++) {
-    const nick = data.slots[i];
-    text += `${i} ${nick || ""}\n`;
-  }
-
-  const completeCount = countComplete(dateKey);
-  if (completeCount > 0) {
-    text += `\nCOMPLETE:\n`;
-    for (let i = 1; i <= 5; i++) {
-      const nick = data.complete[i];
-      if (nick) text += `${i} ${nick}\n`;
-    }
-  }
-
-  navigator.clipboard.writeText(text.trim()).then(() => {
-    toast("Lista copiada!", "success");
-  }).catch(() => {
-    toast("Erro ao copiar", "error");
-  });
+function toast(msg, kind = "") {
+  if (!toastArea) return;
+  const el = document.createElement("div");
+  el.className = `toast ${kind}`;
+  el.textContent = msg;
+  toastArea.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = "opacity .2s";
+    el.style.opacity = "0";
+    setTimeout(() => el.remove(), 200);
+  }, 2200);
 }
 
 // Renderiza card
 function renderMixCard(day) {
-  ensureDay(day.key);
-  const data = mixState[day.key];
+  const data = getMix(day.key);
   const count = countSlots(day.key);
   const status = getStatus(count);
   const completeCount = countComplete(day.key);
@@ -117,7 +80,7 @@ function renderMixCard(day) {
 
   let slotsHtml = "";
   for (let i = 1; i <= 10; i++) {
-    const nick = data.slots[i];
+    const nick = data.slots?.[i];
     const isMe = nick && nick === getNick();
     const isBannedUser = nick && isBanned(nick);
     slotsHtml += `
@@ -130,7 +93,7 @@ function renderMixCard(day) {
 
   let completeHtml = "";
   for (let i = 1; i <= 5; i++) {
-    const nick = data.complete[i];
+    const nick = data.complete?.[i];
     const isMe = nick && nick === getNick();
     completeHtml += `
       <div class="complete-slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}"
@@ -173,19 +136,7 @@ function render() {
   if (!grid) return;
   const days = getNext10Days();
   grid.innerHTML = days.map(renderMixCard).join("");
-}
-
-function toast(msg, kind = "") {
-  if (!toastArea) return;
-  const el = document.createElement("div");
-  el.className = `toast ${kind}`;
-  el.textContent = msg;
-  toastArea.appendChild(el);
-  setTimeout(() => {
-    el.style.transition = "opacity .2s";
-    el.style.opacity = "0";
-    setTimeout(() => el.remove(), 200);
-  }, 2200);
+  updateNickDisplay();
 }
 
 // Modal de nick com senha
@@ -196,20 +147,16 @@ function setupNickModal() {
     modalNick.showModal();
   }
 
-  if (nickDisplay) {
-    nickDisplay.textContent = nick || "—";
-  }
-
   if (changeNickBtn) {
     changeNickBtn.addEventListener("click", () => {
-      if (inputNick) inputNick.value = getNick() || "";
+      if (inputNick) inputNick.value = "";
       if (inputPass) inputPass.value = "";
       if (modalNick) modalNick.showModal();
     });
   }
 
   if (formNick) {
-    formNick.addEventListener("submit", (e) => {
+    formNick.addEventListener("submit", async (e) => {
       e.preventDefault();
       const nickVal = sanitizeNick(inputNick.value);
       const passVal = inputPass ? inputPass.value.trim() : "";
@@ -225,47 +172,56 @@ function setupNickModal() {
         return;
       }
 
-      // Se o nick já existe
+      // Verifica se nick já existe
       if (nickExists(nickVal)) {
-        if (!passVal || passVal.length !== 4) {
-          inputPass?.setCustomValidity("Digite a senha de 4 números");
-          inputPass?.reportValidity();
+        // Precisa da senha correta
+        if (!passVal || passVal.length !== 4 || !/^\d{4}$/.test(passVal)) {
+          inputPass.setCustomValidity("Digite a senha de 4 números");
+          inputPass.reportValidity();
           return;
         }
         if (!checkPassword(nickVal, passVal)) {
-          inputPass?.setCustomValidity("Senha incorreta");
-          inputPass?.reportValidity();
+          inputPass.setCustomValidity("Senha incorreta");
+          inputPass.reportValidity();
           return;
         }
-        // Senha correta
+        // Senha correta - loga
         setNick(nickVal);
         setPass(passVal);
-        if (nickDisplay) nickDisplay.textContent = nickVal;
+        updateNickDisplay();
         if (modalNick) modalNick.close();
-        render();
         toast("Bem-vindo de volta!", "success");
         return;
       }
 
-      // Novo nick - precisa criar senha
+      // Novo nick - precisa criar senha de 4 números
       if (!passVal || passVal.length !== 4 || !/^\d{4}$/.test(passVal)) {
-        inputPass?.setCustomValidity("Crie uma senha de 4 números");
-        inputPass?.reportValidity();
+        inputPass.setCustomValidity("Crie uma senha de 4 números");
+        inputPass.reportValidity();
         return;
       }
 
-      registerNick(nickVal, passVal);
-      setNick(nickVal);
-      setPass(passVal);
-      if (nickDisplay) nickDisplay.textContent = nickVal;
-      if (modalNick) modalNick.close();
-      render();
-      toast("Nick registrado!", "success");
+      try {
+        await registerNick(nickVal, passVal);
+        setNick(nickVal);
+        setPass(passVal);
+        updateNickDisplay();
+        if (modalNick) modalNick.close();
+        toast("Nick registrado!", "success");
+      } catch (err) {
+        toast(err.message, "error");
+      }
     });
   }
 }
 
-// Modal de tipo
+function updateNickDisplay() {
+  if (nickDisplay) {
+    nickDisplay.textContent = getNick() || "—";
+  }
+}
+
+// Modal de tipo (online/presencial)
 function setupTypeModal() {
   const cancelBtn = modalType?.querySelector("[data-close]");
 
@@ -274,19 +230,20 @@ function setupTypeModal() {
   }
 
   if (formType) {
-    formType.addEventListener("submit", (e) => {
+    formType.addEventListener("submit", async (e) => {
       e.preventDefault();
       if (!pendingTypeDate) return;
 
       const fd = new FormData(formType);
       const type = fd.get("mix-type");
 
-      ensureDay(pendingTypeDate);
-      mixState[pendingTypeDate].type = type;
-      saveState();
-      render();
+      try {
+        await setMixType(pendingTypeDate, type);
+        toast(`Mix definido como ${type}!`, "success");
+      } catch (err) {
+        toast(err.message, "error");
+      }
       modalType?.close();
-      toast(`Mix definido como ${type}!`, "success");
     });
   }
 
@@ -301,7 +258,7 @@ function setupTypeModal() {
       modalTypeDay.textContent = day ? `${day.dayLong} (${day.dateBR})` : pendingTypeDate;
     }
 
-    const currentType = mixState[pendingTypeDate]?.type || "online";
+    const currentType = getMix(pendingTypeDate)?.type || "online";
     formType?.querySelectorAll('input[name="mix-type"]').forEach((r) => {
       r.checked = r.value === currentType;
     });
@@ -310,9 +267,9 @@ function setupTypeModal() {
   });
 }
 
-// Clique em slot/complete
+// Clique em slot/complete/copiar
 function setupSlotClick() {
-  document.addEventListener("click", (e) => {
+  document.addEventListener("click", async (e) => {
     const slot = e.target.closest(".slot");
     const complete = e.target.closest(".complete-slot");
     const copyBtn = e.target.closest('[data-action="copy"]');
@@ -335,85 +292,121 @@ function setupSlotClick() {
     if (slot) {
       const dateKey = slot.dataset.date;
       const slotNum = parseInt(slot.dataset.slot, 10);
-      handleSlotClick(dateKey, slotNum, nick);
+      await handleSlotClick(dateKey, slotNum, nick);
     } else if (complete) {
       const dateKey = complete.dataset.date;
       const compNum = parseInt(complete.dataset.complete, 10);
-      handleCompleteClick(dateKey, compNum, nick);
+      await handleCompleteClick(dateKey, compNum, nick);
     }
   });
 }
 
-function handleSlotClick(dateKey, slotNum, nick) {
-  ensureDay(dateKey);
-  const current = mixState[dateKey].slots[slotNum];
+async function handleSlotClick(dateKey, slotNum, nick) {
+  const current = getMix(dateKey).slots?.[slotNum];
 
   if (current === nick) {
-    delete mixState[dateKey].slots[slotNum];
-    saveState();
-    render();
+    await leaveSlot(dateKey, slotNum, nick);
     toast("Você saiu do slot", "success");
   } else if (!current) {
-    // Remove de outros slots/complete
-    Object.entries(mixState[dateKey].slots).forEach(([k, n]) => {
-      if (n === nick) delete mixState[dateKey].slots[k];
-    });
-    Object.entries(mixState[dateKey].complete || {}).forEach(([k, n]) => {
-      if (n === nick) delete mixState[dateKey].complete[k];
-    });
+    // Remove de outros slots/complete do mesmo dia
+    const dayData = getMix(dateKey);
+    if (dayData.slots) {
+      for (const [k, n] of Object.entries(dayData.slots)) {
+        if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
+      }
+    }
+    if (dayData.complete) {
+      for (const [k, n] of Object.entries(dayData.complete)) {
+        if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
+      }
+    }
 
-    mixState[dateKey].slots[slotNum] = nick;
-    saveState();
-    render();
+    await joinSlot(dateKey, slotNum, nick);
     toast(`Slot ${slotNum} reservado!`, "success");
   } else {
     toast("Esse slot já está ocupado", "error");
   }
 }
 
-function handleCompleteClick(dateKey, compNum, nick) {
-  ensureDay(dateKey);
-  if (!mixState[dateKey].complete) mixState[dateKey].complete = {};
-
-  const current = mixState[dateKey].complete[compNum];
+async function handleCompleteClick(dateKey, compNum, nick) {
+  const current = getMix(dateKey).complete?.[compNum];
 
   if (current === nick) {
-    delete mixState[dateKey].complete[compNum];
-    saveState();
-    render();
+    await leaveComplete(dateKey, compNum, nick);
     toast("Você saiu do complete", "success");
   } else if (!current) {
     // Remove de outros lugares
-    Object.entries(mixState[dateKey].slots).forEach(([k, n]) => {
-      if (n === nick) delete mixState[dateKey].slots[k];
-    });
-    Object.entries(mixState[dateKey].complete).forEach(([k, n]) => {
-      if (n === nick) delete mixState[dateKey].complete[k];
-    });
+    const dayData = getMix(dateKey);
+    if (dayData.slots) {
+      for (const [k, n] of Object.entries(dayData.slots)) {
+        if (n === nick) await leaveSlot(dateKey, parseInt(k, 10), nick);
+      }
+    }
+    if (dayData.complete) {
+      for (const [k, n] of Object.entries(dayData.complete)) {
+        if (n === nick) await leaveComplete(dateKey, parseInt(k, 10), nick);
+      }
+    }
 
-    mixState[dateKey].complete[compNum] = nick;
-    saveState();
-    render();
+    await joinComplete(dateKey, compNum, nick);
     toast(`Complete ${compNum} reservado!`, "success");
   } else {
     toast("Esse complete já está ocupado", "error");
   }
 }
 
+// Copiar lista para WhatsApp
+function copyListToClipboard(dateKey) {
+  const data = getMix(dateKey);
+  const day = getNext10Days().find((d) => d.key === dateKey);
+  const typeLabel = data.type === "online" ? "ONLINE" : data.type === "presencial" ? "PRESENCIAL" : "A DEFINIR";
+
+  let text = `MIX ${day.dayName} ${day.dateBR} ${typeLabel}\n`;
+
+  for (let i = 1; i <= 10; i++) {
+    const nick = data.slots?.[i];
+    text += `${i} ${nick || ""}\n`;
+  }
+
+  const completeCount = countComplete(dateKey);
+  if (completeCount > 0) {
+    text += `\nCOMPLETE:\n`;
+    for (let i = 1; i <= 5; i++) {
+      const nick = data.complete?.[i];
+      if (nick) text += `${i} ${nick}\n`;
+    }
+  }
+
+  navigator.clipboard.writeText(text.trim()).then(() => {
+    toast("Lista copiada!", "success");
+  }).catch(() => {
+    toast("Erro ao copiar", "error");
+  });
+}
+
 // Modal Admin
 function setupAdminModal() {
   const modalAdmin = document.getElementById("modal-admin");
   const formAdmin = document.getElementById("form-admin");
-  const adminUser = document.getElementById("admin-user");
+  const adminEmail = document.getElementById("admin-email");
   const adminPass = document.getElementById("admin-pass");
   const adminPanel = document.getElementById("admin-panel");
   const banInput = document.getElementById("ban-nick");
   const btnBan = document.getElementById("btn-ban");
   const btnUnban = document.getElementById("btn-unban");
+  const resetInput = document.getElementById("reset-nick");
+  const resetPassInput = document.getElementById("reset-pass");
+  const btnReset = document.getElementById("btn-reset");
   const bannedList = document.getElementById("banned-list");
   const cancelBtn = modalAdmin?.querySelector("[data-close]");
 
   if (!modalAdmin || !adminBtn) return;
+
+  // Atualiza campos do form admin (email em vez de user)
+  if (adminEmail) {
+    adminEmail.type = "email";
+    adminEmail.placeholder = "Email do admin";
+  }
 
   // Abrir modal admin
   adminBtn.addEventListener("click", () => {
@@ -421,6 +414,8 @@ function setupAdminModal() {
       showAdminPanel();
     } else {
       if (adminPanel) adminPanel.style.display = "none";
+      if (formAdmin) formAdmin.style.display = "block";
+      if (formAdmin) formAdmin.reset();
       modalAdmin.showModal();
     }
   });
@@ -430,19 +425,19 @@ function setupAdminModal() {
     cancelBtn.addEventListener("click", () => modalAdmin.close());
   }
 
-  // Login admin
+  // Login admin (Firebase Auth)
   if (formAdmin) {
-    formAdmin.addEventListener("submit", (e) => {
+    formAdmin.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const user = adminUser?.value.trim();
+      const email = adminEmail?.value.trim();
       const pass = adminPass?.value;
 
-      if (validateAdmin(user, pass)) {
-        setAdmin(true);
+      const success = await loginAdmin(email, pass);
+      if (success) {
         toast("Login admin realizado!", "success");
         showAdminPanel();
       } else {
-        toast("Usuário ou senha incorretos", "error");
+        toast("Email/senha incorretos ou não é admin", "error");
       }
     });
   }
@@ -461,60 +456,99 @@ function setupAdminModal() {
       bannedList.innerHTML = '<li style="color: var(--text-faint);">Nenhum nick banido</li>';
       return;
     }
-    bannedList.innerHTML = banned.map(nick => `
+    bannedList.innerHTML = banned
+      .map(
+        (nick) => `
       <li>
         <span>${escapeHtml(nick)}</span>
         <button class="unban-btn" data-unban="${escapeHtml(nick)}">Desbanir</button>
       </li>
-    `).join("");
+    `
+      )
+      .join("");
   }
 
   // Banir nick
   if (btnBan) {
-    btnBan.addEventListener("click", () => {
+    btnBan.addEventListener("click", async () => {
       const nick = sanitizeNick(banInput?.value);
       if (!nick) {
         toast("Digite um nick", "error");
         return;
       }
-      banNick(nick);
-      toast(`${nick} foi banido!`, "success");
-      renderBannedList();
-      render();
+      try {
+        await banNick(nick);
+        toast(`${nick} foi banido!`, "success");
+        renderBannedList();
+      } catch (err) {
+        toast(err.message, "error");
+      }
       if (banInput) banInput.value = "";
     });
   }
 
   // Desbanir nick
   if (btnUnban) {
-    btnUnban.addEventListener("click", () => {
+    btnUnban.addEventListener("click", async () => {
       const nick = sanitizeNick(banInput?.value);
       if (!nick) {
         toast("Digite um nick", "error");
         return;
       }
-      unbanNick(nick);
-      toast(`${nick} foi desbanido!`, "success");
-      renderBannedList();
+      try {
+        await unbanNick(nick);
+        toast(`${nick} foi desbanido!`, "success");
+        renderBannedList();
+      } catch (err) {
+        toast(err.message, "error");
+      }
       if (banInput) banInput.value = "";
     });
   }
 
+  // Resetar senha
+  if (btnReset) {
+    btnReset.addEventListener("click", async () => {
+      const nick = sanitizeNick(resetInput?.value);
+      const newPass = resetPassInput?.value.trim();
+
+      if (!nick) {
+        toast("Digite um nick", "error");
+        return;
+      }
+      if (!newPass || newPass.length !== 4 || !/^\d{4}$/.test(newPass)) {
+        toast("Senha deve ter 4 números", "error");
+        return;
+      }
+
+      try {
+        await resetPlayerPassword(nick, newPass);
+        toast(`Senha de ${nick} resetada!`, "success");
+      } catch (err) {
+        toast(err.message, "error");
+      }
+      if (resetInput) resetInput.value = "";
+      if (resetPassInput) resetPassInput.value = "";
+    });
+  }
+
   // Desbanir pelo botão na lista
-  document.addEventListener("click", (e) => {
+  document.addEventListener("click", async (e) => {
     const unbanBtn = e.target.closest("[data-unban]");
     if (!unbanBtn) return;
     const nick = unbanBtn.dataset.unban;
-    unbanNick(nick);
-    toast(`${nick} foi desbanido!`, "success");
-    renderBannedList();
-    render();
+    try {
+      await unbanNick(nick);
+      toast(`${nick} foi desbanido!`, "success");
+      renderBannedList();
+    } catch (err) {
+      toast(err.message, "error");
+    }
   });
 }
 
 // Inicialização
 function boot() {
-  loadState();
   render();
   setupNickModal();
   setupTypeModal();

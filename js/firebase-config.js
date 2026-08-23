@@ -1,19 +1,15 @@
 // js/firebase-config.js
-// Inicializa o Firebase Realtime Database usando o SDK via CDN.
-// IMPORTANTE: substitua o objeto firebaseConfig abaixo pelo do seu projeto.
+// Inicializa o Firebase (Auth + Realtime Database) via CDN.
 //
-// Como pegar:
-//  1. https://console.firebase.google.com/ → Add project (nome: Ominirout)
-//  2. Realtime Database → Create Database → southamerica-east1 → modo Locked
-//  3. Ícone Web (</>) → apelido "Ominirout Web" → Register app
-//  4. Copie o firebaseConfig que aparecer e cole no lugar do placeholder abaixo.
-//  5. Em Realtime Database → Rules, cole:
-//     { "rules": { "lists": { ".read": true, ".write": true },
-//                  "history": { ".read": true, ".write": true },
-//                  "meta":   { ".read": true, ".write": true } } }
+// CONFIGURAÇÃO NECESSÁRIA NO FIREBASE CONSOLE:
+// 1. Authentication → Sign-in method → Email/Password: ENABLE
+// 2. Crie um usuário admin: juninn@counteritz.com / senha segura
+// 3. Realtime Database → Rules: cole as regras abaixo (substitua o UID do admin)
+// 4. Database URL region: southamerica-east1 (São Paulo)
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyAziFdP1iU_1Dw_etjM40YX91x4HFHFRaU",
@@ -27,3 +23,47 @@ export const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
+export const auth = getAuth(app);
+
+// ============================================
+// FIREBASE REALTIME DATABASE SECURITY RULES
+// ============================================
+// Cole estas regras no Firebase Console → Realtime Database → Rules
+// SUBSTITUA "ADMIN_UID_AQUI" pelo UID real do usuário admin (veja Authentication → Users)
+/*
+{
+  "rules": {
+    // Dados públicos de mixes - leitura para todos, escrita apenas para usuários autenticados
+    "mixes": {
+      ".read": true,
+      ".write": "auth != null"
+    },
+
+    // Registry de players (nicks, senhas, levels) - leitura para todos, escrita apenas admin OU próprio player
+    "players": {
+      ".read": true,
+      "$uid": {
+        ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).exists())"
+      }
+    },
+
+    // Lista de nicks banidos - leitura para todos, escrita apenas admin
+    "banned": {
+      ".read": true,
+      ".write": "auth != null && root.child('admins').child(auth.uid).exists()"
+    },
+
+    // Lista de admins (UIDs) - apenas leitura para autenticados, escrita nunca (configure no console)
+    "admins": {
+      ".read": "auth != null",
+      ".write": false
+    },
+
+    // Sessão de rollover - apenas admin
+    "meta": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('admins').child(auth.uid).exists()"
+    }
+  }
+}
+*/
