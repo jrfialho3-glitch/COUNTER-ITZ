@@ -1,14 +1,12 @@
 // js/identity.js
 // Gerencia nick, senha, níveis, ban e admin usando Firebase RTDB (tempo real)
-// Admin login: junin / manu123@ (verificado client-side)
+// Admin login: posseydom@gmail.com / manu123@ (Firebase Auth)
+// Users: nick + 4-digit password (stored in Firebase RTDB)
 
 import { ref, onValue, set, update, remove, get, push } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
-import { db } from "./firebase-config.js";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { db, auth } from "./firebase-config.js";
 import { escapeHtml } from "./utils.js";
-
-// Credenciais do admin (hardcoded - apenas client-side, ações de admin validadas antes de escrever no DB)
-const ADMIN_USER = "junin";
-const ADMIN_PASS = "manu123@";
 
 // Chaves do localStorage
 const NICK_KEY = "counteritz_nick";
@@ -22,6 +20,7 @@ let playersCache = {};
 let bannedCache = [];
 let mixesCache = {};
 let listenersInitialized = false;
+let authReady = false;
 
 // Callbacks para notificar UI
 const listeners = new Set();
@@ -145,42 +144,58 @@ function startListeners() {
   listenersInitialized = true;
 }
 
-// Inicia listeners imediatamente
-startListeners();
+function stopListeners() {
+  // onValue listeners auto-cleanup not needed for this simple case
+}
 
-// ---- Admin (client-side validation) ----
+// ---- Auth Admin (Firebase Authentication) ----
 export function isAdminLoggedIn() {
-  if (isAdminUser) return true;
+  return isAdminUser && auth.currentUser !== null;
+}
+
+export async function loginAdmin(email, password) {
   try {
-    return sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
-  } catch {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    isAdminUser = true;
+    try { sessionStorage.setItem(ADMIN_SESSION_KEY, "true"); } catch {}
+    startListeners(); // Ensure listeners are running
+    notifyListeners();
+    return true;
+  } catch (e) {
+    console.error("Admin login error:", e.code, e.message);
     return false;
   }
 }
 
-export function validateAdmin(user, pass) {
-  return user === ADMIN_USER && pass === ADMIN_PASS;
-}
-
-export async function loginAdmin(user, pass) {
-  if (validateAdmin(user, pass)) {
-    try {
-      sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
-      isAdminUser = true;
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
-
 export function logoutAdmin() {
-  try {
-    sessionStorage.removeItem(ADMIN_SESSION_KEY);
-    isAdminUser = false;
-  } catch {}
+  signOut(auth);
+  isAdminUser = false;
+  try { sessionStorage.removeItem(ADMIN_SESSION_KEY); } catch {}
 }
+
+function setupAuthListener() {
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      // User is signed in - check if admin session exists
+      const session = sessionStorage.getItem(ADMIN_SESSION_KEY);
+      isAdminUser = session === "true";
+      authReady = true;
+      startListeners();
+      notifyListeners();
+    } else {
+      isAdminUser = false;
+      authReady = true;
+      stopListeners();
+      playersCache = {};
+      bannedCache = [];
+      mixesCache = {};
+      notifyListeners();
+    }
+  });
+}
+
+// Inicializa listener de auth
+setupAuthListener();
 
 // ---- Players Registry ----
 export function getAllPlayers() {

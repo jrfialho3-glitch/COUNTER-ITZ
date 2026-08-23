@@ -1,8 +1,9 @@
 // js/firebase-config.js
-// Inicializa o Firebase Realtime Database via CDN (sem Auth - usa sistema próprio de nick/senha)
+// Inicializa o Firebase (Auth para admin + Realtime Database)
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyAziFdP1iU_1Dw_etjM40YX91x4HFHFRaU",
@@ -16,12 +17,12 @@ export const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
+export const auth = getAuth(app);
 
 // ============================================
 // FIREBASE REALTIME DATABASE SECURITY RULES
 // ============================================
-// Cole estas regras no Firebase Console → Realtime Database → Rules
-// Publish para ativar. Permite leitura/escrita pública (admin validado no client-side).
+// Cole estas regras no Firebase Console → Realtime Database → Rules → Publish
 /*
 {
   "rules": {
@@ -32,4 +33,4 @@ export const db = getDatabase(app);
   }
 }
 */
-// Admin: junin / manu123@ (validado no JavaScript antes de ações de admin)
+// Admin login: posseydom@gmail.com / manu123@ (Firebase Authentication)
