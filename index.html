@@ -1,177 +1,162 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>COUNTER-ITZ 1.0 - By JuninN</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSMIX — By JuninN</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="logo">
-      <span class="logo-mark">CI</span>
-      <div class="logo-text">
-        <span class="logo-title">COUNTER-ITZ 1.0</span>
-        <span class="logo-subtitle">By JuninN</span>
+  <div class="app">
+
+  <!-- =======================================================
+       HEADER
+       ======================================================== -->
+  <header>
+    <div class="header-inner">
+      <div class="brand">
+        <h1>CSMIX</h1>
+        <span>By JuninN</span>
       </div>
+
+      <button class="profile-btn" id="profileButton">
+        PROFILE
+      </button>
     </div>
-    <div class="who">
-      <span>Jogando como <strong id="current-nick">—</strong></span>
-      <button id="change-nick" class="btn-ghost" type="button">Entrar</button>
-    </div>
-    <a href="ranking.html" class="btn-ghost">🏆 Ranking</a>
-    <a href="historico.html" class="btn-ghost">Histórico</a>
-    <a href="admin.html" id="admin-link" class="btn-ghost" hidden>🛡️ Admin</a>
   </header>
 
-  <main class="container">
-    <h1 class="page-title">Mixes da Semana</h1>
-    <p class="page-subtitle">Seleciona um dia, escolhe online ou presencial, e reserva teu slot!</p>
+  <!-- =======================================================
+       MAIN
+       ======================================================== -->
+  <main>
 
-    <!-- Área do usuário logado (só aparece depois do login) -->
-    <section id="user-panel" class="user-panel" hidden>
-      <div class="user-card">
-        <div class="user-info">
-          <div class="user-row">
-            <span class="user-label">Email:</span>
-            <strong id="user-email" class="user-email"></strong>
-          </div>
-          <div class="user-row">
-            <span class="user-label">Nick:</span>
-            <strong id="user-nick" class="user-nick"></strong>
-            <span id="nick-lock-info" class="user-hint"></span>
-          </div>
-          <div class="user-row">
-            <label class="user-label" for="user-level">Teu level:</label>
-            <select id="user-level" class="user-level-select"></select>
-          </div>
-        </div>
-        <div class="user-actions">
-          <button id="btn-change-nick" class="btn-primary" type="button">Trocar Nick</button>
-          <button id="btn-logout" class="btn-ghost" type="button">Sair</button>
-        </div>
+  <!-- HOME SCREEN -->
+  <section class="home-screen" id="homeScreen">
+    <div class="hero">
+      <h2 class="hero-title">CSMIX</h2>
+      <p class="hero-subtitle">By JuninN</p>
+    </div>
+
+    <div class="mode-buttons">
+      <button class="mode-btn" id="onlineButton" data-mode="online">
+        ONLINE
+      </button>
+
+      <button class="mode-btn" id="lanButton" data-mode="presencial">
+        LAN
+      </button>
+    </div>
+  </section>
+
+  <!-- MIXES SCREEN -->
+  <section class="mixes-screen" id="mixesScreen">
+    <div class="mixes-top">
+      <div class="mixes-heading">
+        <h2 id="mixesTitle">ONLINE</h2>
+        <span id="mixesSubtitle">10 mixes</span>
       </div>
-    </section>
 
-    <div id="mixes-grid" class="mixes-grid"></div>
+      <button class="back-home" id="backHomeButton">
+        VOLTAR
+      </button>
+    </div>
+
+    <div class="cards-grid" id="cardsGrid"></div>
+  </section>
+
   </main>
+  </div>
 
-  <!-- MODAL 1: LOGIN (primeiro que aparece quando clica em Entrar) -->
-  <dialog id="modal-login">
+  <!-- =========================================================
+       PROFILE MODAL
+       ========================================================== -->
+  <div class="modal-overlay" id="profileModal">
     <div class="modal">
-      <div class="logo-big">CI</div>
-      <h2>Entrar na conta</h2>
-      <p>Digita teu email e senha:</p>
-      <form id="form-login" autocomplete="off">
-        <div class="form-row">
-          <label for="login-email">Email</label>
-          <input id="login-email" type="email" placeholder="teuemail@gmail.com" required autocomplete="email" />
-        </div>
-        <div class="form-row">
-          <label for="login-pass">Senha</label>
-          <input id="login-pass" type="password" placeholder="Tua senha" required autocomplete="current-password" />
-        </div>
-        <div class="actions">
-          <button type="submit" class="btn-confirm">ENTRAR</button>
-        </div>
-      </form>
-      <!-- Botão verde de criar conta no rodapé -->
-      <button id="btn-show-register" class="btn-create-account" type="button">CRIAR CONTA</button>
-    </div>
-  </dialog>
-
-  <!-- MODAL 2: CRIAR CONTA -->
-  <dialog id="modal-register">
-    <div class="modal">
-      <div class="logo-big">CI</div>
-      <h2>Criar nova conta</h2>
-      <p>Cria tua conta pra jogar nos mixes:</p>
-      <form id="form-register" autocomplete="off">
-        <div class="form-row">
-          <label for="reg-email">Email</label>
-          <input id="reg-email" type="email" placeholder="teuemail@gmail.com" required autocomplete="email" />
-        </div>
-        <div class="form-row">
-          <label for="reg-pass">Senha</label>
-          <input id="reg-pass" type="password" minlength="6" placeholder="Mínimo 6 caracteres" required autocomplete="new-password" />
-        </div>
-        <div class="actions">
-          <button type="submit" class="btn-confirm">CRIAR</button>
-        </div>
-      </form>
-      <button id="btn-show-login" class="btn-ghost" style="width:100%;margin-top:12px;">Já possuo conta</button>
-    </div>
-  </dialog>
-
-  <!-- MODAL 3: TROCAR NICK (só funciona 1 vez) -->
-  <dialog id="modal-setnick">
-    <div class="modal">
-      <h2>Escolhe teu nick</h2>
-      <p>Por padrão teu nick é a parte do email antes do <strong>@</strong>.</p>
-      <p>Ex: <code>junior@gmail.com</code> → nick padrão <strong>junior</strong></p>
-      <p style="font-size:.85rem;color:var(--text-faint);">⚠️ Só podes trocar <strong>1 vez</strong>. Escolhe bem!</p>
-      <form id="form-setnick">
-        <div class="form-row">
-          <label for="new-nick">Novo nick</label>
-          <input id="new-nick" type="text" maxlength="24" minlength="2" placeholder="Teu nick no CS2" required />
-        </div>
-        <div class="actions">
-          <button type="submit" class="btn-confirm">Salvar</button>
-        </div>
-      </form>
-    </div>
-  </dialog>
-
-  <!-- MODAL 5: MINHA CONTA (level + ações) -->
-  <dialog id="modal-account">
-    <div class="modal">
-      <h2>Minha Conta</h2>
-      <div class="account-row">
-        <span class="user-label">Email:</span>
-        <strong id="acct-email"></strong>
+      <div class="modal-header">
+        <h2>PROFILE</h2>
+        <button class="close-modal" id="closeProfileButton" aria-label="Fechar">×</button>
       </div>
-      <div class="account-row">
-        <span class="user-label">Nick atual:</span>
-        <strong id="acct-nick"></strong>
-      </div>
-      <div class="account-row">
-        <label class="user-label" for="acct-level">Teu level:</label>
-        <select id="acct-level" class="user-level-select"></select>
-        <span id="acct-level-preview" class="level-chip"></span>
-      </div>
-      <div class="actions" style="flex-direction:column;gap:8px;">
-        <button id="acct-change-nick" class="btn-primary" type="button">Trocar Nick</button>
-        <button id="acct-logout" class="btn-ghost" type="button">Sair da conta</button>
-        <button data-close class="btn-ghost" type="button">Fechar</button>
-      </div>
-    </div>
-  </dialog>
 
-  <!-- MODAL 4: TIPO DO MIX (online/presencial) -->
-  <dialog id="modal-type">
-    <div class="modal">
-      <h2>Tipo do Mix</h2>
-      <p>Escolhe o tipo pro dia <span id="modal-type-day"></span>:</p>
-      <form id="form-type">
-        <div class="form-row">
-          <div class="radio-group">
-            <label><input type="radio" name="mix-type" value="online" checked /><span>🌐 Online</span></label>
-            <label><input type="radio" name="mix-type" value="presencial" /><span>📍 Presencial</span></label>
+      <!-- INITIAL PROFILE VIEW -->
+      <div class="auth-view active" id="profileHomeView">
+        <p class="profile-intro">
+          Entre na sua conta ou crie uma conta para participar dos mixes.
+        </p>
+        <div class="auth-options">
+          <button class="primary-btn" id="showLoginButton">
+            ENTRAR
+          </button>
+          <button class="secondary-btn" id="showRegisterButton">
+            CRIAR CONTA
+          </button>
+        </div>
+      </div>
+
+      <!-- LOGIN VIEW -->
+      <div class="auth-view" id="loginView">
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="loginEmail">EMAIL</label>
+            <input id="loginEmail" type="email" autocomplete="email" placeholder="seu@email.com" required>
           </div>
+          <div class="form-group">
+            <label for="loginPassword">SENHA</label>
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Sua senha" required>
+          </div>
+          <div class="form-actions">
+            <button class="primary-btn" type="submit">ENTRAR</button>
+            <button class="secondary-btn" type="button" id="backFromLoginButton">VOLTAR</button>
+          </div>
+          <div class="form-message" id="loginMessage"></div>
+        </form>
+      </div>
+
+      <!-- REGISTER VIEW -->
+      <div class="auth-view" id="registerView">
+        <form id="registerForm">
+          <div class="form-group">
+            <label for="registerEmail">EMAIL</label>
+            <input id="registerEmail" type="email" autocomplete="email" placeholder="seu@email.com" required>
+          </div>
+          <div class="form-group">
+            <label for="registerPassword">SENHA</label>
+            <input id="registerPassword" type="password" autocomplete="new-password" placeholder="Sua senha" minlength="6" required>
+          </div>
+          <div class="form-actions">
+            <button class="primary-btn" type="submit">CRIAR</button>
+            <button class="secondary-btn" type="button" id="backFromRegisterButton">VOLTAR</button>
+          </div>
+          <div class="form-message" id="registerMessage"></div>
+        </form>
+      </div>
+
+      <!-- LOGGED PROFILE VIEW -->
+      <div class="logged-profile" id="loggedProfileView">
+        <div class="profile-email">
+          <strong>CONTA</strong>
+          <span id="loggedEmail">—</span>
         </div>
-        <div class="actions">
-          <button type="button" class="btn-cancel" data-close>Cancelar</button>
-          <button type="submit" class="btn-confirm">Confirmar</button>
+        <div class="form-group">
+          <label for="nickInput">SEU NICK</label>
+          <input id="nickInput" type="text" maxlength="24" placeholder="Digite seu nick">
         </div>
-      </form>
+        <button class="primary-btn" id="saveNickButton">SALVAR NICK</button>
+        <div class="form-message" id="nickMessage"></div>
+        <div class="profile-actions">
+          <button class="danger-btn" id="logoutButton">SAIR</button>
+        </div>
+      </div>
     </div>
-  </dialog>
+  </div>
 
-  <div id="toast-area"></div>
+  <div class="toast" id="toast"></div>
 
+  <!-- =========================================================
+       MODULES
+       ========================================================== -->
   <script type="module" src="js/identity.js"></script>
   <script type="module" src="js/day-rollover.js"></script>
   <script type="module" src="js/header-admin.js"></script>
