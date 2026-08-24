@@ -1127,3 +1127,79 @@ dialog::backdrop {
 .complete-slot.filled.is-me {
   box-shadow: 0 0 0 2px var(--slot-color, var(--blue)), 0 0 14px var(--slot-color, var(--blue));
 }
+/* ============================================
+   Skeleton loading (shimmer)
+   ============================================ */
+.mix-card.skeleton {
+  background: linear-gradient(90deg, var(--bg-elev) 0%, var(--bg-elev-2) 50%, var(--bg-elev) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  min-height: 220px;
+}
+.mix-card.skeleton .skeleton-line {
+  height: 16px;
+  background: var(--bg-elev-2);
+  border-radius: 4px;
+  margin: 8px 0;
+}
+.mix-card.skeleton .skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.mix-card.skeleton .skeleton-grid > * {
+  height: 28px;
+  background: var(--bg-elev-2);
+  border-radius: 4px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ============================================
+   Cascade entrance animation for mix cards
+   ============================================ */
+.mix-card {
+  animation: card-in 0.32s ease backwards;
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================
+   Pop animation on own slot click
+   ============================================ */
+.slot.pop,
+.complete-slot.pop {
+  animation: pop 0.32s ease;
+}
+@keyframes pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* ============================================
+   Empty state
+   ============================================ */
+.empty-state {
+  grid-column: 1 / -1;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 1rem;
+}
+
+/* ============================================
+   Respect prefers-reduced-motion
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  .mix-card,
+  .slot.pop,
+  .complete-slot.pop,
+  .mix-card.skeleton {
+    animation: none;
+  }
+}

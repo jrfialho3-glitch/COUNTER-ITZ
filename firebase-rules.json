@@ -15,7 +15,23 @@
 
     "mixes": {
       ".read": true,
-      ".write": "auth != null"
+      "$dateKey": {
+        "type": {
+          ".write": "auth != null"
+        },
+        "slots": {
+          "$slotNum": {
+            ".write": "auth != null",
+            ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 24"
+          }
+        },
+        "complete": {
+          "$compNum": {
+            ".write": "auth != null",
+            ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 24"
+          }
+        }
+      }
     },
 
     "history": {

@@ -69,6 +69,32 @@ function toast(msg, kind = "") {
 }
 
 // ---- Render dos cards de mix ----
+
+function renderSkeletonCard() {
+  return `
+    <article class="mix-card skeleton">
+      <header class="mix-card-header">
+        <div class="mix-day-name skeleton-line"></div>
+        <div class="mix-date skeleton-line"></div>
+      </header>
+      <div class="mix-type-badge skeleton-line"></div>
+      <section class="slots-section">
+        <div class="slots-label skeleton-line"></div>
+        <div class="slots-grid skeleton-grid"></div>
+      </section>
+      <section class="complete-section">
+        <div class="complete-label skeleton-line"></div>
+        <div class="complete-grid skeleton-grid"></div>
+      </section>
+      <div class="mix-actions-row">
+        <div class="btn-copy skeleton-line"></div>
+        <div class="mix-counter skeleton-line"></div>
+      </div>
+    </article>
+  `;
+}
+
+// ---- Render dos cards de mix ----
 function renderMixCard(day) {
   const data = getMix(day.key);
   const count = countSlots(day.key);
@@ -98,7 +124,7 @@ function renderMixCard(day) {
     const isMe = nick && nick === myNick;
     const color = playerColor(nick);
     const style = color ? `style="--slot-color:${color};border-color:${color};color:${color};"` : "";
-    slotsHtml += `<div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}" data-date="${day.key}" data-slot="${i}" ${style} title="${nick ? escapeHtml(nick) + (isMe ? " (tu)" : "") : `Slot ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
+    slotsHtml += `<div class="slot ${nick ? "filled" : ""} ${isMe ? "is-me pop" : ""}" data-date="${day.key}" data-slot="${i}" ${style} title="${nick ? escapeHtml(nick) + (isMe ? " (tu)" : "") : `Slot ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
   }
 
   let completeHtml = "";
@@ -107,7 +133,7 @@ function renderMixCard(day) {
     const isMe = nick && nick === myNick;
     const color = playerColor(nick);
     const style = color ? `style="--slot-color:${color};border-color:${color};color:${color};"` : "";
-    completeHtml += `<div class="complete-slot ${nick ? "filled" : ""} ${isMe ? "is-me" : ""}" data-date="${day.key}" data-complete="${i}" ${style} title="${nick ? escapeHtml(nick) + (isMe ? " (tu)" : "") : `Complete ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
+    completeHtml += `<div class="complete-slot ${nick ? "filled" : ""} ${isMe ? "is-me pop" : ""}" data-date="${day.key}" data-complete="${i}" ${style} title="${nick ? escapeHtml(nick) + (isMe ? " (tu)" : "") : `Complete ${i}`}">${nick ? escapeHtml(nick) : i}</div>`;
   }
 
   return `
@@ -133,13 +159,38 @@ function renderMixCard(day) {
   `;
 }
 
+let skeletonTimer = null;
+
 function render() {
   // Render user panel + header
   renderUserArea();
 
-  if (grid) {
-    grid.innerHTML = getNext10Days().map(renderMixCard).join("");
+  if (!grid) return;
+
+  const days = getNext10Days();
+
+  // Skeleton state: mostra 10 cards skeleton se auth não estiver pronto
+  if (!isAuthReady()) {
+    grid.innerHTML = days.map(() => renderSkeletonCard()).join("");
+    // Fallback: se auth nunca disparar, mostra grid real após 3s
+    clearTimeout(skeletonTimer);
+    skeletonTimer = setTimeout(() => render(), 3000);
+    return;
   }
+
+  clearTimeout(skeletonTimer);
+
+  // Empty state (guarda de segurança - getNext10Days sempre retorna 10)
+  if (days.length === 0) {
+    grid.innerHTML = `<div class="empty-state">📭 Nenhum dia disponível</div>`;
+    return;
+  }
+
+  grid.innerHTML = days.map((day, index) => {
+    const cardHtml = renderMixCard(day);
+    // Adiciona delay de animação em cascata via style inline
+    return cardHtml.replace('<article class="mix-card', `<article class="mix-card" style="animation-delay: ${index * 30}ms;"`);
+  }).join("");
 }
 
 function renderUserArea() {
@@ -292,7 +343,7 @@ function setupAuth() {
       const email = regEmail.value.trim();
       const pass = regPass.value;
       if (!email || !pass) return;
-      if (pass.length < 6) { toast("Senha precisa ter no mínimo 6 caracteres", "error"); return; }
+      if (pass.length < 6) { toast("senha precisa ter no mínimo 6 caracteres", "error"); return; }
       try {
         await registerUser(email, pass);
         modalRegister.close();

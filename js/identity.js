@@ -3,7 +3,7 @@
 // Admin é checado via /admins/{uid} no RTDB (nada hardcoded).
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getDatabase, ref, onValue, set, update, remove, get } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { getDatabase, ref, onValue, set, update, remove, get, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 import {
   getAuth,
   createUserWithEmailAndPassword,
@@ -205,6 +205,22 @@ export async function adminUnbanNick(nick) {
 
 export async function adminForceRollover() {
   if (!isAdmin()) throw new Error("Sem permissão de admin");
+  await runRolloverLogic();
+}
+
+export async function runAutomaticRollover() {
+  if (!isAdmin()) throw new Error("Sem permissão de admin");
+  if (!isRolloverNeeded()) return;
+  await runRolloverLogic();
+}
+
+export function isRolloverNeeded() {
+  const lastRollover = mixesCache?.meta?.lastRollover || null;
+  const today = formatDateKey(new Date());
+  return !lastRollover || lastRollover < today;
+}
+
+async function runRolloverLogic() {
   const today = formatDateKey(new Date());
   const updates = {};
   const dayKeys = Object.keys(mixesCache).filter((k) => k < today);
@@ -275,7 +291,10 @@ export async function setMixType(dateKey, type) {
 export async function joinSlot(dateKey, slot, nick) {
   if (!currentUid) throw new Error("Faça login primeiro");
   if (isBanned(nick)) throw new Error("Estás banido");
-  await set(ref(db, `mixes/${dateKey}/slots/${slot}`), nick);
+  await runTransaction(ref(db, `mixes/${dateKey}/slots/${slot}`), (current) => {
+    if (current && current !== nick) throw new Error("Esse slot já tá ocupado");
+    return nick;
+  });
 }
 
 export async function leaveSlot(dateKey, slot, nick) {
@@ -287,7 +306,10 @@ export async function leaveSlot(dateKey, slot, nick) {
 export async function joinComplete(dateKey, slot, nick) {
   if (!currentUid) throw new Error("Faça login primeiro");
   if (isBanned(nick)) throw new Error("Estás banido");
-  await set(ref(db, `mixes/${dateKey}/complete/${slot}`), nick);
+  await runTransaction(ref(db, `mixes/${dateKey}/complete/${slot}`), (current) => {
+    if (current && current !== nick) throw new Error("Esse complete já tá ocupado");
+    return nick;
+  });
 }
 
 export async function leaveComplete(dateKey, slot, nick) {
